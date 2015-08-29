@@ -26,7 +26,7 @@ mpz_t field;
 mpz_t hold;
 
 /* Randomizer : holds all next pieces */
-mpz_t bag[6];
+short bag[14];
 
 /* Current head of bag index */
 short int bag_head;
@@ -232,15 +232,38 @@ bool move_rotate(int direction)
     }
 }
 
-// TODO: Ghost piece on bottom
+// Use a random permutation style algorithm here instead,
+// keep effectively two bags, (one of double size), which allows
+// us to permute a new bag whenever the old is used up. This will allow
+// a 7-piece lookahead which will suffice in most cases
+void shuffle(int start)
+{
+    for (int i = 0; i < 7; ++i) {
+        bag[start + i] = i; // half of the bag with all pieces
+    }
 
-#define random_block()                              \
-do {                                                \
-    type = rand() % NUMBER_OF_PIECES;               \
-    rot = 0;                                        \
-    mpz_set_ui(block, PIECE(type, rot));            \
-    mpz_bshift(block, block, (type ? 207 : 197));   \
-} while (0)
+    // Perform a fisher-yates shuffle
+    for (int i = 6; i >= 0; --i) {
+        int j = rand() % (i + 1);
+        bag[start + j] = bag[start + i];
+    }
+}
+
+void random_block(void)
+{
+    type = bag[bag_head];
+    rot = 0;
+    mpz_set_ui(block, PIECE(type, rot));
+    mpz_bshift(block, block, (type ? 207 : 197));
+
+    // Determine new bag head and if we need to shuffle and if so, what part
+    // of the bag
+    bag_head = bag_head + 1 == 14 ? 0 : bag_head + 1;
+    const int start = bag_head == 7 ? 0 : bag_head == 0 ? 7 : -1;
+
+    if (start != -1)
+        shuffle(start);
+}
 
 #define move_harddrop()                             \
 do {                                                \
@@ -249,6 +272,7 @@ do {                                                \
     random_block();                                 \
 } while (0)
 
+// Check multiple line clears are indeed clearing correctly
 int clear_lines(void)
 {
     int cleared = 0;
@@ -365,7 +389,7 @@ void render()
     fflush(stdout);
 }
 
-#define T_MAXFPS 15
+#define T_MAXFPS 30
 #define __NANO_ADJUST 1000000000ULL
 
 static int64_t get_nanotime(void)
@@ -475,12 +499,11 @@ int main(int argc, char **argv)
     mpz_init2(ghost, 230);
 
     bag_head = 0;
-
-    for (int i = 0; i < 6; ++i)
-        mpz_init2(bag[i], 230);
-
-    type = rot = -1;
     srand(time(NULL));
+
+    // Construct the initial bag by shuffling twice
+    shuffle(0);
+    shuffle(7);
 
     // Buffer entire field contents
     static char __print_buffer[256];
@@ -500,9 +523,6 @@ int main(int argc, char **argv)
     mpz_clear(temp2);
     mpz_clear(temp3);
     mpz_clear(hold);
-
-    for (int i = 0; i < 6; ++i)
-        mpz_clear(bag[i]);
 
     return 0;
 }
