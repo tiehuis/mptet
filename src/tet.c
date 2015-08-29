@@ -10,6 +10,9 @@
 /* Current active block */
 mpz_t block;
 
+/* A set ghost piece would save on computations */
+mpz_t ghost;
+
 /* Current block type */
 short type;
 
@@ -141,55 +144,6 @@ static const int64_t bdata[NUMBER_OF_PIECES][4] =
     { 0x00012b0018060000, 0x00012b0018060000, 0x00012b0018060000, 0x00012b0018060000 }
 };
 
-static char __print_buffer[256];
-
-__attribute__((constructor)) void init__(void)
-{
-    // Change console mode on program entry
-    tcgetattr(0, &told);
-    memcpy(&tnew, &told, sizeof(struct termios));
-    tnew.c_lflag &= ~(ICANON | ECHO);
-    tnew.c_cc[VEOL] = 1;
-    tnew.c_cc[VEOF] = 2;
-    tcsetattr(0, TCSANOW, &tnew);
-
-    // Init game data
-    mpz_init2(block, 230);
-    mpz_init2(field, 230);
-    mpz_init2(temp1, 230);
-    mpz_init2(temp2, 230);
-    mpz_init2(temp3, 240);
-    mpz_init2(hold, 230);
-
-    bag_head = 0;
-
-    for (int i = 0; i < 6; ++i)
-        mpz_init2(bag[i], 230);
-
-    type = rot = -1;
-    srand(time(NULL));
-
-    // Buffer entire field contents
-    setvbuf(stdout, __print_buffer, _IOFBF, sizeof(__print_buffer));
-}
-
-__attribute__((destructor)) void exit__(void)
-{
-    // Revert console move on program exit
-    tcsetattr(0, TCSANOW, &told);
-
-    // Clear game data
-    mpz_clear(block);
-    mpz_clear(field);
-    mpz_clear(temp1);
-    mpz_clear(temp2);
-    mpz_clear(temp3);
-    mpz_clear(hold);
-
-    for (int i = 0; i < 6; ++i)
-        mpz_clear(bag[i]);
-}
-
 // Utility functions
 static int kbhit(void)
 {
@@ -251,7 +205,7 @@ bool move_down(void)
 }
 
 /* Returns if the block cannot be moved any lower. */
-bool at_bottom(void)
+bool at_bottom(const mpz_t block)
 {
     mpz_bshift(temp1, block, -10);
     return collision(temp1);
@@ -378,7 +332,7 @@ bool update(void)
     // if we update multiple times per frame
     static bool status = false;
     if (total_frames % 60 == 0 && status == false) {
-        if (at_bottom())
+        if (at_bottom(block))
             move_harddrop();
         else
             move_down();
@@ -394,10 +348,15 @@ bool update(void)
 
 void render()
 {
+    mpz_set(ghost, block);
+    while (!at_bottom(ghost))
+        mpz_bshift(ghost, ghost, -10);
+
     printf("\033[2J%.2f Frames:\n", current_frames);
     printf("|");
     for (int i = 219; i >= 0; --i) {
-        printf("%c", (mpz_tstbit(field, i) | mpz_tstbit(block, i)) ? '.' : ' ');
+        printf("%c", (mpz_tstbit(field, i) | mpz_tstbit(block, i)) ? '.' :
+                mpz_tstbit(ghost, i) ? '#' : ' ');
         if (i % 10 == 0)
             printf("|\n|");
     }
@@ -498,6 +457,52 @@ int run(void)
 
 int main(int argc, char **argv)
 {
+    // Change console mode on program entry
+    tcgetattr(0, &told);
+    memcpy(&tnew, &told, sizeof(struct termios));
+    tnew.c_lflag &= ~(ICANON | ECHO);
+    tnew.c_cc[VEOL] = 1;
+    tnew.c_cc[VEOF] = 2;
+    tcsetattr(0, TCSANOW, &tnew);
+
+    // Init game data
+    mpz_init2(block, 230);
+    mpz_init2(field, 230);
+    mpz_init2(temp1, 230);
+    mpz_init2(temp2, 230);
+    mpz_init2(temp3, 230);
+    mpz_init2(hold, 230);
+    mpz_init2(ghost, 230);
+
+    bag_head = 0;
+
+    for (int i = 0; i < 6; ++i)
+        mpz_init2(bag[i], 230);
+
+    type = rot = -1;
+    srand(time(NULL));
+
+    // Buffer entire field contents
+    static char __print_buffer[256];
+    setvbuf(stdout, __print_buffer, _IOFBF, sizeof(__print_buffer));
+
+    /* Run main program */
     run();
+
+    // Revert console move on program exit
+    tcsetattr(0, TCSANOW, &told);
+
+    // Clear game data
+    mpz_clear(ghost);
+    mpz_clear(block);
+    mpz_clear(field);
+    mpz_clear(temp1);
+    mpz_clear(temp2);
+    mpz_clear(temp3);
+    mpz_clear(hold);
+
+    for (int i = 0; i < 6; ++i)
+        mpz_clear(bag[i]);
+
     return 0;
 }
