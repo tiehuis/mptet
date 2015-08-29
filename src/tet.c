@@ -29,7 +29,7 @@ mpz_t bag[6];
 short int bag_head;
 
 /* Temporary copy variables */
-mpz_t temp1, temp2;
+mpz_t temp1, temp2, temp3;
 
 /* Termios settings */
 struct termios tnew, told;
@@ -91,21 +91,51 @@ static int bottom_frame_count   = 0;
  *
  * Bits 40-44 stores the offsets of the piece from the origin of the containing
  * 4x10 box.
+ *
+ * Bits 45-48 stores the width of the piece, in order to determine if the piece
+ * intersects any walls.
+ *
+ * Bits 49-52 stores the number of empty columns before each piece.
  */
 
-#define DATA_GET_PIECE(x) ((x) & 0xffffffffff)
-#define DATA_GET_ROTATION_OFFSET(x) (((x) >> 40) & 0xf)
+#define debug(...) printf(__VA_ARGS__), usleep(50000)
 
+/* Bit shift an mpz_t. Negative values correspond to right shifts.
+ * rop and op1 are of type mpz_t, op2 is a signed integer. */
+#define mpz_bshift(rop, op1, op2)                               \
+    do {                                                        \
+        if (op2 >= 0)                                           \
+            mpz_mul_2exp(rop, op1, (unsigned long) (op2));      \
+        else if (op2 < 0)                                       \
+            mpz_tdiv_q_2exp(rop, op1, (unsigned long) -(op2));  \
+    } while (0)
 
+/* Get the current index of the leading bit of x */
+#define __LEADING(x) mpz_sizeinbase(x, 2)
+
+/* Extract piece bit data */
+#define __PIECE(type, rot) ((bdata[type][rot]) & 0xffffffffff)
+
+/* Extract offset to top of a 4x4 grid */
+#define __OFFSET(type, rot) (((bdata[type][rot]) >> 40) & 0xf)
+
+/* Extract width of the piece */
+#define __WIDTH(type, rot) (((bdata[type][rot]) >> 44) & 0xf)
+
+/* Extract # of leading columns */
+#define __SPACE(type, rot) (((bdata[type][rot]) >> 48) & 0xf)
+
+// TODO: Rotation width needs to take into account where the greatest width
+// occurs and use that
 const int64_t bdata[][4] =
 {
-    { 0x00000a003c000000, 0x0000022008020080, 0x00000a003c000000, 0x0000022008020080 },
-    { 0x00000a0038040000, 0x0000014030040000, 0x00000b00100e0000, 0x0000014018040000 },
-    { 0x00000a0038080000, 0x000000c010040000, 0x00000c00080e0000, 0x0000014010060000 },
-    { 0x00000a0038020000, 0x00000140100c0000, 0x00000a00200e0000, 0x0000016010040000 },
-    { 0x00000b00180c0000, 0x0000008030040000, 0x00000b00180c0000, 0x0000008030040000 },
-    { 0x00000a0030060000, 0x0000022018040000, 0x00000a0030060000, 0x0000022018040000 },
-    { 0x00000b0018060000, 0x00000b0018060000, 0x00000b0018060000, 0x00000b0018060000 }
+    { 0x00004a003c000000, 0x0002122008020080, 0x00004a003c000000, 0x0002122008020080 },
+    { 0x00003a0038040000, 0x0000214030040000, 0x00003b00100e0000, 0x0001214018040000 },
+    { 0x00003a0038080000, 0x000020c010040000, 0x00003c00080e0000, 0x0001214010060000 },
+    { 0x00003a0038020000, 0x00002140100c0000, 0x00003a00200e0000, 0x0001216010040000 },
+    { 0x00003b00180c0000, 0x0000208030040000, 0x00003b00180c0000, 0x0000208030040000 },
+    { 0x00003a0030060000, 0x0001222018040000, 0x00003a0030060000, 0x0001222018040000 },
+    { 0x00012b0018060000, 0x00012b0018060000, 0x00012b0018060000, 0x00012b0018060000 }
 };
 
 __attribute__((constructor)) void init__(void)
@@ -123,6 +153,7 @@ __attribute__((constructor)) void init__(void)
     mpz_init2(field, 230);
     mpz_init2(temp1, 230);
     mpz_init2(temp2, 230);
+    mpz_init2(temp3, 240);
     mpz_init2(hold, 230);
 
     bag_head = 0;
@@ -144,6 +175,7 @@ __attribute__((destructor)) void exit__(void)
     mpz_clear(field);
     mpz_clear(temp1);
     mpz_clear(temp2);
+    mpz_clear(temp3);
     mpz_clear(hold);
 
     for (int i = 0; i < 6; ++i)
@@ -160,106 +192,130 @@ static int kbhit(void)
     return select(1, &fds, NULL, NULL, &tv);
 }
 
-// TODO: Fix Z spawn location
-// Fix rotate into third offset
-
-/* Z is incorrect */
-
-
 #include <unistd.h>
 
-// Fix wall collision
-bool collision(void)
+/* Determine if the block given by op is in a collision state on the field.
+ * This function clobbers the global 'temp3' variable, so wherever this is
+ * called, should not store any data required after the function call in */
+bool collision(const mpz_t op)
 {
-    // Need to keep track of bits in each row and determine equality
-    // against all
-    /*
-    mpz_tdiv_q_2exp(temp2, temp1, 10);
-    while (mpz_popcount(temp2) == 4)
-        mpz_tdiv_q_2exp(temp2, temp2, 10);
+    mpz_ior(temp3, field, op);
 
-    if (mpz_popcount(temp2) > 0)
-        return false;
-        */
-
-    mpz_ior(temp2, field, temp1);
-
-    // Currently stores offse   mpz_ior(temp, field, block);
     return
-        /* Check block does not overlap */
-        mpz_popcount(temp2) != mpz_popcount(temp1) + mpz_popcount(field)
-        /* Check block has not exited below floor */
-        || mpz_popcount(temp1) != 4
-        /* Check block does not intersect a wall */
-        || 0;
+        /* Block should not overlap with field anywhere */
+        mpz_popcount(temp3) != mpz_popcount(op) + mpz_popcount(field)
+        /* Block should not have descended beneath the floor */
+     || mpz_popcount(op) != 4
+        /* Check if the block has extended across a wall-boundary. This
+         * does not work for an upwards I-block, and extra checks are required
+         * for this edge case */
+     || ((__LEADING(op) + __OFFSET(type, rot) - 1 -
+          __SPACE(type, rot)) % 10 < __WIDTH(type, rot) - 1);
 }
 
+/* Place a block on the field. A call to collision would usually be called
+ * prior. */
 void place_block(void)
 {
     mpz_ior(field, field, block);
 }
 
-void move_left(void)
+/* Move the currently active block left. Check for upwards I-block case also.
+ * Returns if the the block was successfully moved. */
+bool move_left(void)
 {
-    mpz_mul_2exp(temp1, block, 1);
-    if (!collision())
+    mpz_bshift(temp1, block, 1);
+    if (!collision(temp1) && (type || rot & 2 ?: __LEADING(block) % 10 != 0)) {
         mpz_set(block, temp1);
+        return true;
+    }
+    else {
+        return false;
+    }
 }
 
-void move_right(void)
+/* Move the currently active block right. Check for upwards I-block case also.
+ * Returns if the the block was successfully moved. */
+bool move_right(void)
 {
-    mpz_tdiv_q_2exp(temp1, block, 1);
-    if (!collision())
+    mpz_bshift(temp1, block, -1);
+    if (!collision(temp1) && (type || rot & 2 ?: __LEADING(block) % 10 != 1)) {
         mpz_set(block, temp1);
+        return true;
+    }
+    else {
+        return false;
+    }
 }
 
+/* Move the currently active block down one square. Returns if the block was
+ * successfully moved. */
 bool move_down(void)
 {
-    bool flag = false;
-
-    mpz_tdiv_q_2exp(temp1, block, 10);
-    if (!collision()) {
+    mpz_bshift(temp1, block, -10);
+    if (!collision(temp1)) {
         mpz_set(block, temp1);
-        flag = true;
+        return true;
     }
-
-    return flag;
+    else {
+        return false;
+    }
 }
 
+/* Returns if the block cannot be moved any lower. */
 bool at_bottom(void)
 {
-    mpz_tdiv_q_2exp(temp1, block, 10);
-    return collision();
+    mpz_bshift(temp1, block, -10);
+    return collision(temp1);
 }
 
-void move_rotateL(void)
+// TODO: Wallkicks
+/* Attempt to rotate a block left. Wallkicks are Akira style.
+ * Returns if the piece rotated successfully. */
+bool move_rotateL(void)
 {
-    const size_t shift = mpz_sizeinbase(block, 2) +
-        DATA_GET_ROTATION_OFFSET(bdata[type][rot]) - 40;
+    /* This may be negative the new rotation is in bottom 3 rows so cast to an
+     * integer */
+    const int shift = (int) __LEADING(block) + __OFFSET(type, rot) - 40;
+
     rot = rot == 3 ? 0 : rot + 1;
-    mpz_set_ui(temp1, DATA_GET_PIECE(bdata[type][rot]));
-    mpz_mul_2exp(temp1, temp1, shift);
-    if (!collision())
+    mpz_set_ui(temp1, __PIECE(type, rot));
+    mpz_bshift(temp1, temp1, shift);
+
+    if (!collision(temp1)) {
         mpz_set(block, temp1);
+        return true;
+    }
+    else {
+        return false;
+    }
 }
 
-void move_rotateR(void)
+bool move_rotateR(void)
 {
-    const size_t shift = mpz_sizeinbase(block, 2) +
-        DATA_GET_ROTATION_OFFSET(bdata[type][rot]) - 40;
+    const int shift = (int) __LEADING(block) + __OFFSET(type, rot) - 40;
+
     rot = rot == 0 ? 3 : rot - 1;
-    mpz_set_ui(temp1, DATA_GET_PIECE(bdata[type][rot]));
-    mpz_mul_2exp(temp1, temp1, shift);
-    if (!collision())
+    mpz_set_ui(temp1, __PIECE(type, rot));
+    mpz_bshift(temp1, temp1, shift);
+
+    if (!collision(temp1)) {
         mpz_set(block, temp1);
+        return true;
+    }
+    else {
+        return false;
+    }
 }
+
+// TODO: Ghost piece on bottom
 
 void random_block(void)
 {
     type = rand() % 7;
     rot = 0;
-    mpz_set_ui(block, DATA_GET_PIECE(bdata[type][rot]));
-    mpz_mul_2exp(block, block, (type ? 207 : 197 ));
+    mpz_set_ui(block, __PIECE(type, rot));
+    mpz_bshift(block, block, (type ? 207 : 197));
 }
 
 void move_harddrop(void)
@@ -269,28 +325,60 @@ void move_harddrop(void)
     random_block();
 }
 
+int clear_lines(void)
+{
+    int cleared = 0;
+
+    /* line bits set */
+    mpz_set_ui(temp1, 0x3ff);
+
+    /* Careful changing this upper bound, as using mpz_setbit will not
+     * do any bounds checking */
+    for (int i = 0; i < __LEADING(field) / 10 + 1; ++i) {
+        mpz_and(temp2, field, temp1);
+
+        // Found a completely set line */
+        if (mpz_popcount(temp2) == 10) {
+            /* Lower bits set to 1 for flag use */
+            mpz_set_ui(temp2, 0);
+            mpz_setbit(temp2, 10*i + 1);
+            mpz_sub_ui(temp2, temp2, 1);
+
+            /* Zero lower 10*i + 10 bits and place the
+             * stored bits in temp2 */
+            mpz_set_ui(temp3, 0);
+            mpz_setbit(temp3, 231);
+            mpz_sub_ui(temp3, temp3, 1);
+            mpz_xor(temp3, temp3, temp2);
+
+            /* Shift field removing cleared line */
+            mpz_and(temp2, field, temp2);   // field bottom
+            mpz_and(temp3, field, temp3);   // field top
+
+            /* Copy parts back to field */
+            mpz_tdiv_q_2exp(field, temp3, 10);
+            mpz_ior(field, field, temp2);
+
+            ++cleared;
+
+            --i; // We just cleared the ith line, so the new current now needs
+                 // to be rechecked
+        }
+
+        mpz_bshift(temp1, temp1, 10);
+    }
+
+    return cleared;
+}
+
 // Game loop
 
-/*
-static const int kb_map =
-{
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+enum {
+    BUTTON_UP, BUTTON_DOWN, BUTTON_RIGHT, BUTTON_LEFT,
+    BUTTON_z, BUTTON_x, BUTTON_c, BUTTON_RETURN, BUTTON_COUNT
 };
 
-static int kb_back[10], kb_buffer[10] = {0};
-*/
+int buttonTime[9] = { 0 };
 
 void update()
 {
@@ -313,93 +401,24 @@ void update()
             break;
         case 'b':
             move_harddrop();
+            clear_lines();
             break;
         case 'q':
             exit(0);
     }
-    /*
-    memcpy(kb_back, kb_buffer, sizeof(kb_buffer));
-
-    // Get current keypresses
-    while (kbhit()) {
-        int ch = getch();
-        if (kbmap[ch] > 0) {
-            kb_buffer[kbmap[ch]]++;
-        }
-    }
-
-    bool key_down = false;
-
-    // If key was removed, update held value
-    for (int i = 0; i < 10; ++i) {
-        if (kb_back[i] == kb_buffer[i])
-            kb_buffer[i] = 0;
-
-        if (kb_buffer[i])
-            key_down = true;
-    }
-
-    // Filter out illogical movement, i.e. left + right at same time
-    if (kb_buffer[0] && kb_buffer[1])
-        kb_buffer[0] = kb_buffer[1] = 0;
-
-    if (kb_buffer[3] && kb_buffer[4])
-        kb_buffer[3] = kb_buffer[4] = 0;
-
-    // If a key is pressed, deal with it, else do nothing
-    if (key_down) {
-        // Deal with hard drops first
-        if (kb_buffer[2] == 1)
-            move_harddrop();
-
-        // Deal with rotation second - only deal with first frame pressed
-        if (kb_buffer[3] == 1)
-            move_rotateL();
-        else if (kb_buffer[4] == 1)
-            move_rotateR();
-
-        // Deal with movement third
-        if (kb_buffer[5] == 1) {
-            move_down();
-            frames_since_last = 0;
-        }
-
-        if (kb_buffer[0])
-            move_left();
-        else if (kb_buffer[1])
-            move_right();
-    }
-
-    // Drop piece every 'gravity' frames
-    if (total_frames % gravity == 0)
-        move_down();
-
-
-    if (at_bottom()) {
-        bottom_frame_count++;
-    }
-    if (!at_bottom() && bottom_frame_count != 0) {
-        bottom_frame_count = 0;
-    }
-    if (at_bottom() && bottom_frame_count > LOCK_DELAY) {
-        move_placeblock();
-        bottom_frame_count = 0;
-   }
-   */
-
-    // Update the field
 }
 
 void render()
 {
     printf("\033[2J%.2f Frames:\n", current_frames);
+    printf("|");
     for (int i = 219; i >= 0; --i) {
         printf("%c", (mpz_tstbit(field, i) | mpz_tstbit(block, i)) ? '.' : ' ');
         if (i % 10 == 0)
-            printf("\n");
+            printf("|\n|");
     }
 
-    printf("----------\n");
+    printf("----------|\n");
 }
 
 #define T_MAXFPS 60
@@ -412,8 +431,11 @@ static int64_t get_nanotime(void)
     return (int64_t) (ts.tv_sec * __NANO_ADJUST + ts.tv_nsec);
 }
 
+/* Main game loop adapted from NullpoMino */
 int run(void)
 {
+    render();
+
     bool sleep_flag, running;
     double actual_fps;
     int64_t time_diff, sleep_time, sleep_time_ms, oversleep_time, after_time,
@@ -487,7 +509,7 @@ int run(void)
     return 0;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     random_block();
     return run();
