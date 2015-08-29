@@ -98,7 +98,8 @@ static int bottom_frame_count   = 0;
  * Bits 49-52 stores the number of empty columns before each piece.
  */
 
-#define debug(...) printf(__VA_ARGS__), usleep(50000)
+/* Correct the modulo operation to give a true modulo and not remainder */
+#define mod(x, y) ((((x) % (y)) + (y)) % (y))
 
 /* Bit shift an mpz_t. Negative values correspond to right shifts.
  * rop and op1 are of type mpz_t, op2 is a signed integer. */
@@ -111,23 +112,25 @@ static int bottom_frame_count   = 0;
     } while (0)
 
 /* Get the current index of the leading bit of x */
-#define __LEADING(x) mpz_sizeinbase(x, 2)
+#define LEADING(x) mpz_sizeinbase(x, 2)
 
 /* Extract piece bit data */
-#define __PIECE(type, rot) ((bdata[type][rot]) & 0xffffffffff)
+#define PIECE(type, rot) ((bdata[type][rot]) & 0xffffffffff)
 
 /* Extract offset to top of a 4x4 grid */
-#define __OFFSET(type, rot) (((bdata[type][rot]) >> 40) & 0xf)
+#define OFFSET(type, rot) (((bdata[type][rot]) >> 40) & 0xf)
 
 /* Extract width of the piece */
-#define __WIDTH(type, rot) (((bdata[type][rot]) >> 44) & 0xf)
+#define WIDTH(type, rot) (((bdata[type][rot]) >> 44) & 0xf)
 
 /* Extract # of leading columns */
-#define __SPACE(type, rot) (((bdata[type][rot]) >> 48) & 0xf)
+#define SPACE(type, rot) (((bdata[type][rot]) >> 48) & 0xf)
 
-// TODO: Rotation width needs to take into account where the greatest width
-// occurs and use that
-const int64_t bdata[][4] =
+/* Number of different types of tetriminoes */
+#define NUMBER_OF_PIECES 7
+
+// TODO: Add wallkick data somewhere in here
+static const int64_t bdata[NUMBER_OF_PIECES][4] =
 {
     { 0x00004a003c000000, 0x0002122008020080, 0x00004a003c000000, 0x0002122008020080 },
     { 0x00003a0038040000, 0x0000214030040000, 0x00003b00100e0000, 0x0001214018040000 },
@@ -137,6 +140,8 @@ const int64_t bdata[][4] =
     { 0x00003a0030060000, 0x0001222018040000, 0x00003a0030060000, 0x0001222018040000 },
     { 0x00012b0018060000, 0x00012b0018060000, 0x00012b0018060000, 0x00012b0018060000 }
 };
+
+static char __print_buffer[256];
 
 __attribute__((constructor)) void init__(void)
 {
@@ -163,6 +168,9 @@ __attribute__((constructor)) void init__(void)
 
     type = rot = -1;
     srand(time(NULL));
+
+    // Buffer entire field contents
+    setvbuf(stdout, __print_buffer, _IOFBF, sizeof(__print_buffer));
 }
 
 __attribute__((destructor)) void exit__(void)
@@ -192,8 +200,6 @@ static int kbhit(void)
     return select(1, &fds, NULL, NULL, &tv);
 }
 
-#include <unistd.h>
-
 /* Determine if the block given by op is in a collision state on the field.
  * This function clobbers the global 'temp3' variable, so wherever this is
  * called, should not store any data required after the function call in */
@@ -209,23 +215,21 @@ bool collision(const mpz_t op)
         /* Check if the block has extended across a wall-boundary. This
          * does not work for an upwards I-block, and extra checks are required
          * for this edge case */
-     || ((__LEADING(op) + __OFFSET(type, rot) - 1 -
-          __SPACE(type, rot)) % 10 < __WIDTH(type, rot) - 1);
+     || ((LEADING(op) + OFFSET(type, rot) - 1 -
+          SPACE(type, rot)) % 10 < WIDTH(type, rot) - 1);
 }
 
 /* Place a block on the field. A call to collision would usually be called
  * prior. */
-void place_block(void)
-{
-    mpz_ior(field, field, block);
-}
+#define place_block() mpz_ior(field, field, block);
 
-/* Move the currently active block left. Check for upwards I-block case also.
- * Returns if the the block was successfully moved. */
-bool move_left(void)
+/* Move the currently active block. Check for upwards I-block case also.
+ * Returns if the the block was successfully moved. -1 moves right, 1 moves
+ * left, all other values are invalid. */
+bool move_horizontal(const int direction)
 {
-    mpz_bshift(temp1, block, 1);
-    if (!collision(temp1) && (type || rot & 2 ?: __LEADING(block) % 10 != 0)) {
+    mpz_bshift(temp1, block, direction);
+    if (!collision(temp1) && (type || rot & 2 ? true : LEADING(block) % 10 != (direction < 0 ? 1 : 0))) {
         mpz_set(block, temp1);
         return true;
     }
@@ -234,22 +238,6 @@ bool move_left(void)
     }
 }
 
-/* Move the currently active block right. Check for upwards I-block case also.
- * Returns if the the block was successfully moved. */
-bool move_right(void)
-{
-    mpz_bshift(temp1, block, -1);
-    if (!collision(temp1) && (type || rot & 2 ?: __LEADING(block) % 10 != 1)) {
-        mpz_set(block, temp1);
-        return true;
-    }
-    else {
-        return false;
-    }
-}
-
-/* Move the currently active block down one square. Returns if the block was
- * successfully moved. */
 bool move_down(void)
 {
     mpz_bshift(temp1, block, -10);
@@ -269,34 +257,16 @@ bool at_bottom(void)
     return collision(temp1);
 }
 
-// TODO: Wallkicks
-/* Attempt to rotate a block left. Wallkicks are Akira style.
- * Returns if the piece rotated successfully. */
-bool move_rotateL(void)
+/* 1 indicates right rotation, -1 indicates left rotation. Any other values
+ * are considered invalid */
+bool move_rotate(int direction)
 {
     /* This may be negative the new rotation is in bottom 3 rows so cast to an
      * integer */
-    const int shift = (int) __LEADING(block) + __OFFSET(type, rot) - 40;
+    const int shift = (int) LEADING(block) + OFFSET(type, rot) - 40;
 
-    rot = rot == 3 ? 0 : rot + 1;
-    mpz_set_ui(temp1, __PIECE(type, rot));
-    mpz_bshift(temp1, temp1, shift);
-
-    if (!collision(temp1)) {
-        mpz_set(block, temp1);
-        return true;
-    }
-    else {
-        return false;
-    }
-}
-
-bool move_rotateR(void)
-{
-    const int shift = (int) __LEADING(block) + __OFFSET(type, rot) - 40;
-
-    rot = rot == 0 ? 3 : rot - 1;
-    mpz_set_ui(temp1, __PIECE(type, rot));
+    rot = mod(rot + direction, 4);
+    mpz_set_ui(temp1, PIECE(type, rot));
     mpz_bshift(temp1, temp1, shift);
 
     if (!collision(temp1)) {
@@ -310,20 +280,20 @@ bool move_rotateR(void)
 
 // TODO: Ghost piece on bottom
 
-void random_block(void)
-{
-    type = rand() % 7;
-    rot = 0;
-    mpz_set_ui(block, __PIECE(type, rot));
-    mpz_bshift(block, block, (type ? 207 : 197));
-}
+#define random_block()                              \
+do {                                                \
+    type = rand() % NUMBER_OF_PIECES;               \
+    rot = 0;                                        \
+    mpz_set_ui(block, PIECE(type, rot));            \
+    mpz_bshift(block, block, (type ? 207 : 197));   \
+} while (0)
 
-void move_harddrop(void)
-{
-    while (move_down()) {}
-    place_block();
-    random_block();
-}
+#define move_harddrop()                             \
+do {                                                \
+    while (move_down()) {}                          \
+    place_block();                                  \
+    random_block();                                 \
+} while (0)
 
 int clear_lines(void)
 {
@@ -334,7 +304,7 @@ int clear_lines(void)
 
     /* Careful changing this upper bound, as using mpz_setbit will not
      * do any bounds checking */
-    for (int i = 0; i < __LEADING(field) / 10 + 1; ++i) {
+    for (int i = 0; i < LEADING(field) / 10 + 1; ++i) {
         mpz_and(temp2, field, temp1);
 
         // Found a completely set line */
@@ -372,40 +342,54 @@ int clear_lines(void)
 }
 
 // Game loop
-
-enum {
-    BUTTON_UP, BUTTON_DOWN, BUTTON_RIGHT, BUTTON_LEFT,
-    BUTTON_z, BUTTON_x, BUTTON_c, BUTTON_RETURN, BUTTON_COUNT
-};
-
-int buttonTime[9] = { 0 };
-
-void update()
+bool update(void)
 {
-    int ch = getchar();
-    switch (ch) {
-        case 'h':
-            move_left();
-            break;
-        case 'l':
-            move_right();
-            break;
-        case 'j':
-            move_down();
-            break;
-        case 'z':
-            move_rotateR();
-            break;
-        case 'x':
-            move_rotateL();
-            break;
-        case 'b':
-            move_harddrop();
-            clear_lines();
-            break;
-        case 'q':
-            exit(0);
+    if (kbhit()) {
+        int ch = getchar();
+        switch (ch) {
+            case 'h':
+                move_horizontal(1);
+                break;
+            case 'l':
+                move_horizontal(-1);
+                break;
+            case 'j':
+                move_down();
+                break;
+            case 'z':
+                move_rotate(-1);
+                break;
+            case 'x':
+                move_rotate(1);
+                break;
+            case 'b':
+                move_harddrop();
+                clear_lines();
+                break;
+            case 'q':
+                return false;
+        }
+
+        // Discard all keypresses stil in queue so we don't buffer endlessly
+        while (kbhit()) ch = getchar();
     }
+
+    // Add some gravity. Ensure that we don't down drop more than once
+    // if we update multiple times per frame
+    static bool status = false;
+    if (total_frames % 60 == 0 && status == false) {
+        if (at_bottom())
+            move_harddrop();
+        else
+            move_down();
+
+        status = true;
+    }
+    else if (total_frames % 60 == 1) {
+        status = false;
+    }
+
+    return true;
 }
 
 void render()
@@ -419,9 +403,10 @@ void render()
     }
 
     printf("----------|\n");
+    fflush(stdout);
 }
 
-#define T_MAXFPS 60
+#define T_MAXFPS 15
 #define __NANO_ADJUST 1000000000ULL
 
 static int64_t get_nanotime(void)
@@ -434,6 +419,7 @@ static int64_t get_nanotime(void)
 /* Main game loop adapted from NullpoMino */
 int run(void)
 {
+    random_block();
     render();
 
     bool sleep_flag, running;
@@ -460,7 +446,8 @@ int run(void)
 
         // Game update
         // Get new key state here, and move the pieces accordinglyA
-        update();
+        if (!update())
+            return 0;
 
         // Game render
         // Draw image to terminal here
@@ -506,11 +493,11 @@ int run(void)
         }
     }
 
-    return 0;
+    return 1;
 }
 
 int main(int argc, char **argv)
 {
-    random_block();
-    return run();
+    run();
+    return 0;
 }
