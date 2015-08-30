@@ -5,7 +5,10 @@
 #include <string.h>
 #include <stdbool.h>
 #include <termios.h>
+#include <sched.h>
 #include <gmp.h>
+
+//TODO: Redo main game loop to avoid using cpu too much
 
 /* Current active block */
 mpz_t block;
@@ -29,10 +32,12 @@ mpz_t hold;
 short bag[14];
 
 /* Current head of bag index */
-short int bag_head;
+short bag_head;
 
 /* Temporary copy variables */
 mpz_t temp1, temp2, temp3;
+
+bool recalc_ghost;
 
 /* Termios settings */
 struct termios tnew, told;
@@ -185,6 +190,7 @@ bool move_horizontal(const int direction)
     mpz_bshift(temp1, block, direction);
     if (!collision(temp1) && (type || rot & 2 ? true : LEADING(block) % 10 != (direction < 0 ? 1 : 0))) {
         mpz_set(block, temp1);
+        recalc_ghost = true;
         return true;
     }
     else {
@@ -197,6 +203,7 @@ bool move_down(void)
     mpz_bshift(temp1, block, -10);
     if (!collision(temp1)) {
         mpz_set(block, temp1);
+        recalc_ghost = true;
         return true;
     }
     else {
@@ -225,6 +232,7 @@ bool move_rotate(int direction)
 
     if (!collision(temp1)) {
         mpz_set(block, temp1);
+        recalc_ghost = true;
         return true;
     }
     else {
@@ -251,6 +259,7 @@ void shuffle(int start)
 
 void random_block(void)
 {
+    recalc_ghost = true;
     type = bag[bag_head];
     rot = 0;
     mpz_set_ui(block, PIECE(type, rot));
@@ -372,9 +381,12 @@ bool update(void)
 
 void render()
 {
-    mpz_set(ghost, block);
-    while (!at_bottom(ghost))
-        mpz_bshift(ghost, ghost, -10);
+    if (recalc_ghost == true) {
+        mpz_set(ghost, block);
+        while (!at_bottom(ghost))
+            mpz_bshift(ghost, ghost, -10);
+        recalc_ghost = false;
+    }
 
     printf("\033[2J%.2f Frames:\n", current_frames);
     printf("|");
@@ -449,7 +461,9 @@ int run(void)
             maxfps_current = T_MAXFPS + 5;
 
         // Never use perfect yield
-        while (get_nanotime() < fps_delay + __NANO_ADJUST / T_MAXFPS) {}
+        while (get_nanotime() < fps_delay + __NANO_ADJUST / T_MAXFPS) {
+            sched_yield();
+        }
 
         fps_delay += __NANO_ADJUST / T_MAXFPS;
         sleep_flag = true;
