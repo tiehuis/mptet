@@ -10,6 +10,13 @@
 
 //TODO: Redo main game loop to avoid using cpu too much
 
+#define tetFRAMEBUFFER 0
+#define tetTERMINAL    1
+
+#ifndef TET_GUI
+#   define TET_GUI tetTERMINAL
+#endif
+
 /* Current active block */
 mpz_t block;
 
@@ -145,17 +152,6 @@ static const int64_t bdata[NUMBER_OF_PIECES][4] =
     { 0x00003a0030060000, 0x0001222018040000, 0x00003a0030060000, 0x0001222018040000 },
     { 0x00012b0018060000, 0x00012b0018060000, 0x00012b0018060000, 0x00012b0018060000 }
 };
-
-// Utility functions
-static int kbhit(void)
-{
-    struct timeval tv = {0};
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(0, &fds);
-    return select(1, &fds, NULL, NULL, &tv);
-}
-
 /* Determine if the block given by op is in a collision state on the field.
  * This function clobbers the global 'temp3' variable, so wherever this is
  * called, should not store any data required after the function call in */
@@ -325,7 +321,14 @@ int clear_lines(void)
     return cleared;
 }
 
-#include "gui.c"
+/* Include appropriate render functions */
+#if TET_GUI == tetFRAMEBUFFER
+#   include "gui_framebuffer.c"
+#elif TET_GUI == tetTERMINAL
+#   include "gui_term.c"
+#else
+#   error "no gui specified"
+#endif
 
 void perform_gravity(void)
 {

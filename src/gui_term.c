@@ -1,6 +1,16 @@
 /* Termios settings */
 static struct termios tnew, told;
 
+// Utility functions
+static int kbhit(void)
+{
+    struct timeval tv = {0};
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(0, &fds);
+    return select(1, &fds, NULL, NULL, &tv);
+}
+
 void gui_init(void)
 {
     // Change console mode on program entry
