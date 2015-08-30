@@ -39,9 +39,6 @@ mpz_t temp1, temp2, temp3;
 
 bool recalc_ghost;
 
-/* Termios settings */
-struct termios tnew, told;
-
 /* Other gameplay data */
 static double current_frames    = 0;
 static int64_t total_frames     = 0;
@@ -328,39 +325,10 @@ int clear_lines(void)
     return cleared;
 }
 
-// Game loop
-bool update(void)
+#include "gui.c"
+
+void perform_gravity(void)
 {
-    if (kbhit()) {
-        int ch = getchar();
-        switch (ch) {
-            case 'h':
-                move_horizontal(1);
-                break;
-            case 'l':
-                move_horizontal(-1);
-                break;
-            case 'j':
-                move_down();
-                break;
-            case 'z':
-                move_rotate(-1);
-                break;
-            case 'x':
-                move_rotate(1);
-                break;
-            case 'b':
-                move_harddrop();
-                clear_lines();
-                break;
-            case 'q':
-                return false;
-        }
-
-        // Discard all keypresses stil in queue so we don't buffer endlessly
-        while (kbhit()) ch = getchar();
-    }
-
     // Add some gravity. Ensure that we don't down drop more than once
     // if we update multiple times per frame
     static bool status = false;
@@ -375,11 +343,9 @@ bool update(void)
     else if (total_frames % 60 == 1) {
         status = false;
     }
-
-    return true;
 }
 
-void render()
+void try_recalc_ghost(void)
 {
     if (recalc_ghost == true) {
         mpz_set(ghost, block);
@@ -387,18 +353,6 @@ void render()
             mpz_bshift(ghost, ghost, -10);
         recalc_ghost = false;
     }
-
-    printf("\033[2J%.2f Frames:\n", current_frames);
-    printf("|");
-    for (int i = 219; i >= 0; --i) {
-        printf("%c", (mpz_tstbit(field, i) | mpz_tstbit(block, i)) ? '.' :
-                mpz_tstbit(ghost, i) ? '#' : ' ');
-        if (i % 10 == 0)
-            printf("|\n|");
-    }
-
-    printf("----------|\n");
-    fflush(stdout);
 }
 
 #define T_MAXFPS 30
@@ -443,6 +397,9 @@ int run(void)
         // Get new key state here, and move the pieces accordinglyA
         if (!update())
             return 0;
+
+        perform_gravity();
+        try_recalc_ghost();
 
         // Game render
         // Draw image to terminal here
@@ -495,20 +452,13 @@ int run(void)
 
 int main(int argc, char **argv)
 {
-    // Change console mode on program entry
-    tcgetattr(0, &told);
-    memcpy(&tnew, &told, sizeof(struct termios));
-    tnew.c_lflag &= ~(ICANON | ECHO);
-    tnew.c_cc[VEOL] = 1;
-    tnew.c_cc[VEOF] = 2;
-    tcsetattr(0, TCSANOW, &tnew);
+    gui_init();
 
     // Init game data
     mpz_init2(block, 230);
     mpz_init2(field, 230);
     mpz_init2(temp1, 230);
     mpz_init2(temp2, 230);
-    mpz_init2(temp3, 230);
     mpz_init2(hold, 230);
     mpz_init2(ghost, 230);
 
@@ -519,15 +469,8 @@ int main(int argc, char **argv)
     shuffle(0);
     shuffle(7);
 
-    // Buffer entire field contents
-    static char __print_buffer[256];
-    setvbuf(stdout, __print_buffer, _IOFBF, sizeof(__print_buffer));
-
     /* Run main program */
     run();
-
-    // Revert console move on program exit
-    tcsetattr(0, TCSANOW, &told);
 
     // Clear game data
     mpz_clear(ghost);
@@ -538,5 +481,6 @@ int main(int argc, char **argv)
     mpz_clear(temp3);
     mpz_clear(hold);
 
+    gui_free();
     return 0;
 }
