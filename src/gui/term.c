@@ -11,7 +11,7 @@ static int kbhit(void)
     return select(1, &fds, NULL, NULL, &tv);
 }
 
-void gui_init(void)
+void gui_init(int argc, char **argv)
 {
     // Change console mode on program entry
     tcgetattr(0, &told);

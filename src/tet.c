@@ -10,8 +10,9 @@
 
 //TODO: Redo main game loop to avoid using cpu too much
 
-#define tetFRAMEBUFFER 0
-#define tetTERMINAL    1
+#define tetTERMINAL    0
+#define tetFRAMEBUFFER 1
+#define tetDIRECTFB    2
 
 #ifndef TET_GUI
 #   define TET_GUI tetTERMINAL
@@ -284,7 +285,7 @@ int clear_lines(void)
 
     /* Careful changing this upper bound, as using mpz_setbit will not
      * do any bounds checking */
-    for (int i = 0; i < LEADING(field) / 10 + 1; ++i) {
+    for (int i = 0; i < LEADING(field) / 10 + 1 - cleared; ++i) {
         mpz_and(temp2, field, temp1);
 
         // Found a completely set line */
@@ -293,6 +294,7 @@ int clear_lines(void)
             mpz_set_ui(temp2, 0);
             mpz_setbit(temp2, 10*i + 1);
             mpz_sub_ui(temp2, temp2, 1);
+
 
             /* Zero lower 10*i + 10 bits and place the
              * stored bits in temp2 */
@@ -322,10 +324,12 @@ int clear_lines(void)
 }
 
 /* Include appropriate render functions */
-#if TET_GUI == tetFRAMEBUFFER
-#   include "gui_framebuffer.c"
-#elif TET_GUI == tetTERMINAL
-#   include "gui_term.c"
+#if TET_GUI == tetTERMINAL
+#   include "gui/term.c"
+#elif TET_GUI == tetFRAMEBUFFER
+#   include "gui/framebuffer.c"
+#elif TET_GUI == tetDIRECTFB
+#   include "gui/directfb.c"
 #else
 #   error "no gui specified"
 #endif
@@ -455,7 +459,7 @@ int run(void)
 
 int main(int argc, char **argv)
 {
-    gui_init();
+    gui_init(argc, argv);
 
     // Init game data
     mpz_init2(block, 230);
