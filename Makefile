@@ -1,11 +1,16 @@
 CC ?= clang
 CFLAGS += -lgmp -O2 -o tet
 
-all: src/tet.c
+all: directfb
+
+testing: src/testing.c
+	$(CC) $(CFLAGS) src/testing.c -DMPTET_RENDERER=MPTET_USE_DIRECTFB -I/usr/include/directfb -ldirectfb
+
+terminal: src/tet.c
 	$(CC) $(CFLAGS) src/tet.c
 
 fb: src/tet.c
-	$(CC) $(CFLAGS) src/tet.c -DTET_GUI=tetFRAMEBUFFER
+	$(CC) $(CFLAGS) src/tet.c -DMPTET_RENDERER=MPTET_USE_FRAMEBUFFER
 
 directfb: src/tet.c
-	$(CC) $(CFLAGS) src/tet.c -DTET_GUI=tetDIRECTFB -I/usr/include/directfb -ldirectfb
+	$(CC) $(CFLAGS) src/tet.c -DMPTET_RENDERER=MPTET_USE_DIRECTFB -I/usr/include/directfb -ldirectfb

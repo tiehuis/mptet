@@ -27,7 +27,7 @@ void gui_init(int argc, char **argv)
 }
 
 // Game loop
-bool update(void)
+bool gui_update(void)
 {
 #ifdef NDEBUG
     if (kbhit()) {
@@ -66,7 +66,7 @@ bool update(void)
     return true;
 }
 
-void render()
+void gui_render()
 {
     printf("\033[2J%.2f Frames:\n", current_frames);
     printf("|");

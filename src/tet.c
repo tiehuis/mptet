@@ -10,12 +10,12 @@
 
 //TODO: Redo main game loop to avoid using cpu too much
 
-#define tetTERMINAL    0
-#define tetFRAMEBUFFER 1
-#define tetDIRECTFB    2
+#define MPTET_USE_TERMINAL    0
+#define MPTET_USE_FRAMEBUFFER 1
+#define MPTET_USE_DIRECTFB    2
 
-#ifndef TET_GUI
-#   define TET_GUI tetTERMINAL
+#ifndef MPTET_RENDERER
+#   define MPTET_RENDERER MPTET_USE_TERMINAL
 #endif
 
 /* Current active block */
@@ -306,7 +306,6 @@ int clear_lines(void)
             mpz_setbit(temp2, 10*i + 1);
             mpz_sub_ui(temp2, temp2, 1);
 
-
             /* Zero lower 10*i + 10 bits and place the
              * stored bits in temp2 */
             mpz_set_ui(temp3, 0);
@@ -346,43 +345,15 @@ int clear_lines(void)
 int keyboardState[10] = { 0 };
 
 /* Include appropriate render functions */
-#if TET_GUI == tetTERMINAL
+#if MPTET_RENDERER == MPTET_USE_TERMINAL
 #   include "gui/term.c"
-#elif TET_GUI == tetFRAMEBUFFER
+#elif MPTET_RENDERER == MPTET_USE_FRAMEBUFFER
 #   include "gui/framebuffer.c"
-#elif TET_GUI == tetDIRECTFB
+#elif MPTET_RENDERER == MPTET_USE_DIRECTFB
 #   include "gui/directfb.c"
 #else
 #   error "no gui specified"
 #endif
-
-void perform_gravity(void)
-{
-    // Add some gravity. Ensure that we don't down drop more than once
-    // if we update multiple times per frame
-    static bool status = false;
-    if (total_frames % 60 == 0 && status == false) {
-        if (at_bottom(block))
-            move_harddrop();
-        else
-            move_down();
-
-        status = true;
-    }
-    else if (total_frames % 60 == 1) {
-        status = false;
-    }
-}
-
-void try_recalc_ghost(void)
-{
-    if (recalc_ghost == true) {
-        mpz_set(ghost, block);
-        while (!at_bottom(ghost))
-            mpz_bshift(ghost, ghost, -10);
-        recalc_ghost = false;
-    }
-}
 
 #define DAS_DELAY 4
 
@@ -411,15 +382,41 @@ bool update(void)
         move_rotate(1);
 
     if (keyboardState[5] == 1) {
-        move_harddrop();
+        if (!move_harddrop())
+            return false;
         clear_lines();
     }
 
     if (keyboardState[6])
         return false;
 
-    perform_gravity();
-    try_recalc_ghost();
+    // Add some gravity. Ensure that we don't down drop more than once
+    // if we update multiple times per frame
+    // Perform Gravity
+    static bool status = false;
+    if (total_frames % 60 == 0 && status == false) {
+        if (at_bottom(block)) {
+            if (!move_harddrop())
+                return false;
+            clear_lines();
+        }
+        else {
+            move_down();
+        }
+
+        status = true;
+    }
+    else if (total_frames % 60 == 1) {
+        status = false;
+    }
+
+    // Determine if we need to recalculate ghost and if so, do ti
+    if (recalc_ghost == true) {
+        mpz_set(ghost, block);
+        while (!at_bottom(ghost))
+            mpz_bshift(ghost, ghost, -10);
+        recalc_ghost = false;
+    }
 
     return true;
 }
@@ -489,6 +486,7 @@ int run(void)
         // Never use perfect yield
         while (get_nanotime() < fps_delay + __NANO_ADJUST / T_MAXFPS) {
             sched_yield();
+            usleep(1000);
         }
 
         fps_delay += __NANO_ADJUST / T_MAXFPS;
