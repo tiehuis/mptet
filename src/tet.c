@@ -333,6 +333,17 @@ int clear_lines(void)
     return cleared;
 }
 
+/*
+ *  0 - left
+ *  1 - right
+ *  2 - down
+ *  3 - z
+ *  4 - x
+ *  5 - space
+ *  6 - quit
+ */
+int keyboardState[10] = { 0 };
+
 /* Include appropriate render functions */
 #if TET_GUI == tetTERMINAL
 #   include "gui/term.c"
@@ -372,6 +383,46 @@ void try_recalc_ghost(void)
     }
 }
 
+#define DAS_DELAY 9
+
+/*
+ *  0 - lf
+ *  1 - right
+ *  2 - down
+ *  3 - z
+ *  4 - x
+ *  5 - space
+ *  6 - quit
+ */
+bool update(void)
+{
+    if (keyboardState[0] == 1 || keyboardState[0] > DAS_DELAY)
+        move_horizontal(1);
+    else if (keyboardState[1] == 1 || keyboardState[1] > DAS_DELAY)
+        move_horizontal(-1);
+
+    if (keyboardState[2] == 1 || keyboardState[2] > DAS_DELAY)
+        move_down();
+
+    if (keyboardState[3] == 1)
+        move_rotate(1);
+    else if (keyboardState[4] == 1)
+        move_rotate(-1);
+
+    if (keyboardState[5] == 1) {
+        move_harddrop();
+        clear_lines();
+    }
+
+    if (keyboardState[6])
+        return false;
+
+    perform_gravity();
+    try_recalc_ghost();
+
+    return true;
+}
+
 #define T_MAXFPS 30
 #define __NANO_ADJUST 1000000000ULL
 
@@ -387,7 +438,7 @@ static int64_t get_nanotime(void)
 int run(void)
 {
     random_block();
-    render();
+    gui_render();
 
     bool sleep_flag, running;
     double actual_fps;
@@ -413,15 +464,14 @@ int run(void)
 
         // Game update
         // Get new key state here, and move the pieces accordinglyA
+        gui_update();
+
         if (!update())
             return 0;
 
-        perform_gravity();
-        try_recalc_ghost();
-
         // Game render
         // Draw image to terminal here
-        render();
+        gui_render();
 
         sleep_flag = false;
         after_time = get_nanotime();

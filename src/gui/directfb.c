@@ -36,75 +36,28 @@ void gui_init(int argc, char **argv)
     DFBCHECK(dfb->GetInputDevice(dfb, DIDID_KEYBOARD, &keyboard));
 }
 
-static bool mmove1 = false;
-static bool mmove2 = false;
-static bool mmove3 = false;
-static bool mrotater = false;
-static bool mrotatel = false;
-static bool mhard = false;
+static int keystates__[] =
+{
+    DIKI_LEFT, DIKI_RIGHT, DIKI_DOWN, DIKI_Z, DIKI_X, DIKI_SPACE, DIKI_Q
+};
 
-bool update(void)
+bool gui_update(void)
 {
     DFBInputDeviceKeyState state;
 
-    DFBCHECK(keyboard->GetKeyState(keyboard, DIKI_LEFT, &state));
-    if (state == DIKS_DOWN && !mmove1) {
-        move_horizontal(1);
-        mmove1 = true;
-    }
-    if (state == DIKS_UP)
-        mmove1 = false;
+    for (int i = 0; i < sizeof(keystates__) / sizeof(keystates__[0]); ++i) {
+        DFBCHECK(keyboard->GetKeyState(keyboard, keystates__[i], &state));
 
-    DFBCHECK(keyboard->GetKeyState(keyboard, DIKI_RIGHT, &state));
-    if (state == DIKS_DOWN && !mmove2) {
-        move_horizontal(-1);
-        mmove2 = true;
+        if (state == DIKS_DOWN)
+            keyboardState[i]++;
+        else
+            keyboardState[i] = 0;
     }
-    if (state == DIKS_UP)
-        mmove2 = false;
-
-    DFBCHECK(keyboard->GetKeyState(keyboard, DIKI_DOWN, &state));
-    if (state == DIKS_DOWN && !mmove3) {
-        move_down();
-        mmove3 = true;
-    }
-    if (state == DIKS_UP)
-        mmove3 = false;
-
-    DFBCHECK(keyboard->GetKeyState(keyboard, DIKI_Z, &state));
-    if (state == DIKS_DOWN && !mrotater) {
-        move_rotate(-1);
-        mrotater = true;
-    }
-    if (state == DIKS_UP)
-        mrotater = false;
-
-    DFBCHECK(keyboard->GetKeyState(keyboard, DIKI_X, &state));
-    if (state == DIKS_DOWN && !mrotatel) {
-        move_rotate(1);
-        mrotatel = true;
-    }
-    if (state == DIKS_UP)
-        mrotatel = false;
-
-    DFBCHECK(keyboard->GetKeyState(keyboard, DIKI_SPACE, &state));
-    if (state == DIKS_DOWN && !mhard) {
-        if (!move_harddrop())
-            return false;
-        clear_lines();
-        mhard = true;
-    }
-    if (state == DIKS_UP)
-        mhard = false;
-
-    DFBCHECK(keyboard->GetKeyState(keyboard, DIKI_Q, &state));
-    if (state == DIKS_DOWN)
-        return false;
 
     return true;
 }
 
-void render(void)
+void gui_render(void)
 {
     // Clear Screen
     DFBCHECK(primary->SetColor(primary, 0, 0, 0, 0xff));
