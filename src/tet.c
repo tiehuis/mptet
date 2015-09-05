@@ -246,14 +246,15 @@ void shuffle(int start)
         bag[start + i] = i; // half of the bag with all pieces
     }
 
-    // Perform a fisher-yates shuffle
-    for (int i = 6; i >= 0; --i) {
-        int j = rand() % (i + 1);
+    // Perform a Fisher-Yates shuffle
+    for (int i = 0; i < 7; ++i) {
+        int j = (rand() % (7 - i)) + i;
+        int temp = bag[start + j];
         bag[start + j] = bag[start + i];
+        bag[start + i] = temp;
     }
 }
 
-// TODO: Blocks generated don't seem compeletely random
 void random_block(void)
 {
     recalc_ghost = true;
@@ -383,7 +384,7 @@ void try_recalc_ghost(void)
     }
 }
 
-#define DAS_DELAY 9
+#define DAS_DELAY 4
 
 /*
  *  0 - lf
@@ -405,9 +406,9 @@ bool update(void)
         move_down();
 
     if (keyboardState[3] == 1)
-        move_rotate(1);
-    else if (keyboardState[4] == 1)
         move_rotate(-1);
+    else if (keyboardState[4] == 1)
+        move_rotate(1);
 
     if (keyboardState[5] == 1) {
         move_harddrop();

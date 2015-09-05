@@ -76,7 +76,7 @@ void gui_render(void)
             DFBCHECK(primary->SetColor(primary, 0x80, 0x80, 0xff, 0xff));
         }
         else if (mpz_tstbit(ghost, i)) {
-            DFBCHECK(primary->SetColor(primary, 0x80, 0x80, 0xff, 0));
+            DFBCHECK(primary->SetColor(primary, 0x80, 0x80, 0xff / 2, 0));
         }
         else {
             DFBCHECK(primary->SetColor(primary, 0, 0, 0, 0xff));
@@ -90,7 +90,28 @@ void gui_render(void)
 
     // Draw preview pieces
     for (int i = 0; i < 3; ++i) {
-        int64_t block = (bdata[type][rot]) & 0xffffffffff;
+        int64_t block = (bdata[bag[mod(bag_head + i, 14)]][0]) & 0xffffffffff;
+
+        // Draw at offset 500, 40 pixels right of main grid
+        // Draw at a similar height, 20 pixels down
+        // Preview pieces are half size
+
+        #define PREVIEW_X_OFFSET 40
+        #define PREVIEW_Y_OFFSET 20
+        #define PREVIEW_BLOCK_SCALE 1
+
+        DFBCHECK(primary->SetColor(primary, 0x80, 0x80, 0xff, 0xff));
+
+        for (int x = 0; x < 4; ++x) {
+            for (int y = 0; y < 4; ++y) {
+                if (block & ((1 << ((4 - y) * 10 - x - 1))))
+                    DFBCHECK(primary->FillRectangle(primary,
+                                100 + 10 * BLOCK_SIDE + PREVIEW_X_OFFSET + x * BLOCK_SIDE * PREVIEW_BLOCK_SCALE,
+                                100 + i * (PREVIEW_Y_OFFSET + 4 * BLOCK_SIDE * PREVIEW_BLOCK_SCALE)
+                                + y * BLOCK_SIDE * PREVIEW_BLOCK_SCALE,
+                                PREVIEW_BLOCK_SCALE * BLOCK_SIDE - 2, PREVIEW_BLOCK_SCALE * BLOCK_SIDE - 2));
+            }
+        }
     }
 
     DFBCHECK(primary->Flip(primary, NULL, 0));
