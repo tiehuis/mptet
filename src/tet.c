@@ -214,18 +214,20 @@ bool at_bottom(const mpz_t block)
 
 /* 1 indicates right rotation, -1 indicates left rotation. Any other values
  * are considered invalid */
+// TODO: Rotation fails near edges on occassion
 bool move_rotate(int direction)
 {
     /* This may be negative the new rotation is in bottom 3 rows so cast to an
      * integer */
     const int shift = (int) LEADING(block) + OFFSET(type, rot) - 40;
 
-    rot = mod(rot + direction, 4);
-    mpz_set_ui(temp1, PIECE(type, rot));
+    const int newrot = mod(rot + direction, 4);
+    mpz_set_ui(temp1, PIECE(type, newrot));
     mpz_bshift(temp1, temp1, shift);
 
     if (!collision(temp1)) {
         mpz_set(block, temp1);
+        rot = newrot;
         recalc_ghost = true;
         return true;
     }
@@ -251,6 +253,7 @@ void shuffle(int start)
     }
 }
 
+// TODO: Blocks generated don't seem compeletely random
 void random_block(void)
 {
     recalc_ghost = true;
@@ -268,14 +271,21 @@ void random_block(void)
         shuffle(start);
 }
 
-#define move_harddrop()                             \
-do {                                                \
-    while (move_down()) {}                          \
-    place_block();                                  \
-    random_block();                                 \
-} while (0)
+bool move_harddrop(void)
+{
+    while (move_down()) {}
+
+    place_block();
+    random_block();
+
+    if (!collision(block))
+        return true;
+    else
+        return false;
+}
 
 // Check multiple line clears are indeed clearing correctly
+// TODO: Lines are not cleared correctly on occassion
 int clear_lines(void)
 {
     int cleared = 0;
@@ -373,6 +383,7 @@ static int64_t get_nanotime(void)
 }
 
 /* Main game loop adapted from NullpoMino */
+// TODO: Doesn't sleep enough, too much CPU usage currently
 int run(void)
 {
     random_block();
