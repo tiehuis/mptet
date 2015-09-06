@@ -15,3 +15,8 @@ fb: $(MAIN)
 
 directfb: $(MAIN)
 	$(CC) $(CFLAGS) $(MAIN) -DMPTET_RENDERER=MPTET_USE_DIRECTFB -I/usr/include/directfb -ldirectfb
+
+clean:
+	rm mptet
+
+.PHONY: clean
