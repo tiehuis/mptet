@@ -50,12 +50,12 @@ arguments.
 
 ### TODO
 
-- [] Correct rotation and line-clear algorithms
-- [] Add wallkicks to the rotation system
+- [ ] Correct rotation and line-clear algorithms
+- [ ] Add wallkicks to the rotation system
 - [x] Add hold function
-- [] Add a line race mode
-- [] Add a scoring system to line clears
-- [] Verify main loop CPU usage and look for any savings
-- [] Change GMP allocator to use a custom stack-based allocator
-- [] Automatic replays
-- [] Multiple screen resolutions (Not only fullscreen)
+- [ ] Add a line race mode
+- [ ] Add a scoring system to line clears
+- [ ] Verify main loop CPU usage and look for any savings
+- [ ] Change GMP allocator to use a custom stack-based allocator
+- [ ] Automatic replays
+- [ ] Multiple screen resolutions (Not only fullscreen)
