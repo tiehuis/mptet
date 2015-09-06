@@ -130,31 +130,35 @@ static int bottom_frame_count   = 0;
 #define LEADING(x) mpz_sizeinbase(x, 2)
 
 /* Extract piece bit data */
-#define PIECE(type, rot) ((bdata[type][rot]) & 0xffffffffff)
+#define PIECE(type, rot)                  \
+    (                                       \
+     ((bdata[type][rot] & 0xf000) << 24) |  \
+     ((bdata[type][rot] & 0x0f00) << 18) |  \
+     ((bdata[type][rot] & 0x00f0) << 12) |  \
+     ((bdata[type][rot] & 0x000f) <<  6)    \
+    )
 
 /* Extract offset to top of a 4x4 grid */
-#define OFFSET(type, rot) (((bdata[type][rot]) >> 40) & 0xf)
+#define OFFSET(type, rot) (((bdata[type][rot]) >> 16) & 0xf)
 
 /* Extract width of the piece */
-#define WIDTH(type, rot) (((bdata[type][rot]) >> 44) & 0xf)
+#define WIDTH(type, rot) (((bdata[type][rot]) >> 20) & 0xf)
 
 /* Extract # of leading columns */
-#define SPACE(type, rot) (((bdata[type][rot]) >> 48) & 0xf)
-
-/* Number of different types of tetriminoes */
-#define NUMBER_OF_PIECES 7
+#define SPACE(type, rot) (((bdata[type][rot]) >> 24) & 0xf)
 
 // TODO: Add wallkick data somewhere in here
-static const int64_t bdata[NUMBER_OF_PIECES][4] =
+static const int64_t bdata[7][4] =
 {
-    { 0x00004a003c000000, 0x0002122008020080, 0x00004a003c000000, 0x0002122008020080 },
-    { 0x00003a0038040000, 0x0000214030040000, 0x00003b00100e0000, 0x0001214018040000 },
-    { 0x00003a0038080000, 0x000020c010040000, 0x00003c00080e0000, 0x0001214010060000 },
-    { 0x00003a0038020000, 0x00002140100c0000, 0x00003a00200e0000, 0x0001216010040000 },
-    { 0x00003b00180c0000, 0x0000208030040000, 0x00003b00180c0000, 0x0000208030040000 },
-    { 0x00003a0030060000, 0x0001222018040000, 0x00003a0030060000, 0x0001222018040000 },
-    { 0x00012b0018060000, 0x00012b0018060000, 0x00012b0018060000, 0x00012b0018060000 }
+    { 0x00000000004a0f00, 0x0000000002122222, 0x00000000004a0f00, 0x0000000002122222 },
+    { 0x00000000003a0e40, 0x0000000000214c40, 0x00000000003b04e0, 0x0000000001214640 },
+    { 0x00000000003a0e80, 0x000000000020c440, 0x00000000003c02e0, 0x0000000001214460 },
+    { 0x00000000003a0e20, 0x00000000002144c0, 0x00000000003a08e0, 0x0000000001216440 },
+    { 0x00000000003b06c0, 0x0000000000208c40, 0x00000000003b06c0, 0x0000000000208c40 },
+    { 0x00000000003a0c60, 0x0000000001222640, 0x00000000003a0c60, 0x0000000001222640 },
+    { 0x00000000012b0660, 0x00000000012b0660, 0x00000000012b0660, 0x00000000012b0660 }
 };
+
 /* Determine if the block given by op is in a collision state on the field.
  * This function clobbers the global 'temp3' variable, so wherever this is
  * called, should not store any data required after the function call in */
