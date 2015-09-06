@@ -6,7 +6,9 @@
 #include <time.h>
 #include <gmp.h>
 
-//TODO: Redo main game loop to avoid using cpu too much
+#define MPTET_MIN(x, y) ((x) < (y) ? (x) : (y))
+
+#define MPTET_MAX(x, y) ((x) > (y) ? (x) : (y))
 
 #define MPTET_USE_TERMINAL    0
 #define MPTET_USE_FRAMEBUFFER 1
@@ -23,27 +25,29 @@ mpz_t block;
 mpz_t ghost;
 
 /* Current block type */
-short type;
+uint8_t type;
 
 /* Current block rotation */
-short rot;
+uint8_t rot;
 
 /* Playfield */
 mpz_t field;
 
 /* Current hold piece */
-mpz_t hold;
+int8_t hold = -1;
 
 /* Randomizer : holds all next pieces */
-short bag[14];
+uint8_t bag[14];
 
 /* Current head of bag index */
-short bag_head;
+uint8_t bag_head;
 
 /* Temporary copy variables */
 mpz_t temp1, temp2, temp3;
 
 bool recalc_ghost;
+
+bool can_hold;
 
 /* Other gameplay data */
 static double current_frames    = 0;
@@ -236,6 +240,7 @@ bool move_rotate(int direction)
     }
 }
 
+
 // Use a random permutation style algorithm here instead,
 // keep effectively two bags, (one of double size), which allows
 // us to permute a new bag whenever the old is used up. This will allow
@@ -257,6 +262,7 @@ void shuffle(int start)
 
 void random_block(void)
 {
+    can_hold = true;
     recalc_ghost = true;
     type = bag[bag_head];
     rot = 0;
@@ -270,6 +276,27 @@ void random_block(void)
 
     if (start != -1)
         shuffle(start);
+}
+
+void switch_hold_piece(void)
+{
+    if (can_hold) {
+        if (hold != -1) {
+            int tt = hold;
+            hold = type;
+            type = tt;
+            rot = 0;
+            mpz_set_ui(block, PIECE(type, rot));
+            mpz_bshift(block, block, (type ? 207 : 197));
+        }
+        else {
+            hold = type;
+            random_block();
+        }
+
+        recalc_ghost = true;
+        can_hold = false;
+    }
 }
 
 bool move_harddrop(void)
@@ -287,6 +314,7 @@ bool move_harddrop(void)
 
 // Check multiple line clears are indeed clearing correctly
 // TODO: Lines are not cleared correctly on occassion
+// This only clears one line at a time
 int clear_lines(void)
 {
     int cleared = 0;
@@ -387,7 +415,11 @@ bool update(void)
         clear_lines();
     }
 
-    if (keyboardState[6])
+    if (keyboardState[6] == 1) {
+        switch_hold_piece();
+    }
+
+    if (keyboardState[7])
         return false;
 
     // Add some gravity. Ensure that we don't down drop more than once
@@ -525,7 +557,6 @@ int main(int argc, char **argv)
     mpz_init2(field, 230);
     mpz_init2(temp1, 230);
     mpz_init2(temp2, 230);
-    mpz_init2(hold, 230);
     mpz_init2(ghost, 230);
 
     bag_head = 0;
@@ -545,7 +576,6 @@ int main(int argc, char **argv)
     mpz_clear(temp1);
     mpz_clear(temp2);
     mpz_clear(temp3);
-    mpz_clear(hold);
 
     gui_free();
     return 0;

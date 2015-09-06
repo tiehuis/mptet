@@ -53,7 +53,7 @@ void gui_init(int argc, char **argv)
 
 static int keystates__[] =
 {
-    DIKI_LEFT, DIKI_RIGHT, DIKI_DOWN, DIKI_Z, DIKI_X, DIKI_SPACE, DIKI_Q
+    DIKI_LEFT, DIKI_RIGHT, DIKI_DOWN, DIKI_Z, DIKI_X, DIKI_SPACE, DIKI_C, DIKI_Q
 };
 
 void gui_update(void)
@@ -70,13 +70,14 @@ void gui_update(void)
     }
 }
 
+/* Number of preview pieces shown */
 #define PREVIEW_NUMBER 3
 
 /* Block side length */
 #define M_BLOCK_SIDE 36
 
 /* Main grid x offset */
-#define M_X_OFFSET 100
+#define M_X_OFFSET 200
 
 /* Main grid y offset */
 #define M_Y_OFFSET 100
@@ -90,6 +91,15 @@ void gui_update(void)
 /* Preview block scale */
 #define P_BLOCK_SCALE 0.9f
 
+/* Hold preview block scale */
+#define H_BLOCK_SCALE 0.9f
+
+/* Hold preview x offset - assert(M_X_OFFSET > (M_BLOCK_SIDE * H_BLOCK_SCALE * 4))*/
+#define H_X_OFFSET (M_X_OFFSET / 2 - MPTET_MAX(0, (M_BLOCK_SIDE * H_BLOCK_SCALE) * 2))
+
+/* Hold preview y offset */
+#define H_Y_OFFSET 40
+
 void gui_render(void)
 {
     // Clear Screen
@@ -100,13 +110,13 @@ void gui_render(void)
     DFBCHECK(primary->SetColor(primary, 0x80, 0x80, 0x80, 0xff));
     DFBCHECK(primary->DrawRectangle(primary,
                 M_X_OFFSET - 1,
-                M_X_OFFSET - 1,
+                M_Y_OFFSET - 1,
                 10 * M_BLOCK_SIDE + 2,
                 22 * M_BLOCK_SIDE + 2));
 
     DFBCHECK(primary->DrawRectangle(primary,
                 M_X_OFFSET - 2,
-                M_X_OFFSET - 2,
+                M_Y_OFFSET - 2,
                 10 * M_BLOCK_SIDE + 4,
                 22 * M_BLOCK_SIDE + 4));
 
@@ -126,11 +136,26 @@ void gui_render(void)
                     M_BLOCK_SIDE - 2));
     }
 
+    // Draw hold piece
+    DFBCHECK(primary->SetColor(primary, 0x80, 0x80, 0xff, 0xff));
+    uint64_t block = PIECE(hold, 0);
+
+    if (hold != -1) {
+        for (int x = 0; x < 4; ++x) {
+            for (int y = 0; y < 4; ++y) {
+                if (block & ((1 << ((4 - y) * 10 - x - 1))))
+                    DFBCHECK(primary->FillRectangle(primary,
+                                H_X_OFFSET + x * M_BLOCK_SIDE * H_BLOCK_SCALE,
+                                M_Y_OFFSET + H_Y_OFFSET + y * M_BLOCK_SIDE * H_BLOCK_SCALE,
+                                H_BLOCK_SCALE * M_BLOCK_SIDE - 2,
+                                H_BLOCK_SCALE * M_BLOCK_SIDE - 2));
+            }
+        }
+    }
+
     // Draw preview pieces
     for (int i = 0; i < PREVIEW_NUMBER; ++i) {
         uint64_t block = PIECE(bag[mod(bag_head + i, 14)], 0);
-
-        DFBCHECK(primary->SetColor(primary, 0x80, 0x80, 0xff, 0xff));
 
         for (int x = 0; x < 4; ++x) {
             for (int y = 0; y < 4; ++y) {
@@ -139,7 +164,8 @@ void gui_render(void)
                                 M_X_OFFSET + 10 * M_BLOCK_SIDE + P_X_OFFSET + x * M_BLOCK_SIDE * P_BLOCK_SCALE,
                                 M_Y_OFFSET + i * (P_Y_OFFSET + 4 * M_BLOCK_SIDE * P_BLOCK_SCALE)
                                 + y * M_BLOCK_SIDE * P_BLOCK_SCALE,
-                                P_BLOCK_SCALE * M_BLOCK_SIDE - 2, P_BLOCK_SCALE * M_BLOCK_SIDE - 2));
+                                P_BLOCK_SCALE * M_BLOCK_SIDE - 2,
+                                P_BLOCK_SCALE * M_BLOCK_SIDE - 2));
             }
         }
     }
