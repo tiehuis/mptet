@@ -1,16 +1,17 @@
 CC ?= clang
-CFLAGS += -lgmp -O2 -o tet
+CFLAGS += -lgmp -O2 -o mptet
+MAIN := src/mptet.c
 
 all: directfb
 
-testing: src/testing.c
+testing: src/testing
 	$(CC) $(CFLAGS) src/testing.c -DMPTET_RENDERER=MPTET_USE_DIRECTFB -I/usr/include/directfb -ldirectfb
 
-terminal: src/tet.c
-	$(CC) $(CFLAGS) src/tet.c
+terminal: $(MAIN)
+	$(CC) $(CFLAGS) $(MAIN)
 
-fb: src/tet.c
-	$(CC) $(CFLAGS) src/tet.c -DMPTET_RENDERER=MPTET_USE_FRAMEBUFFER
+fb: $(MAIN)
+	$(CC) $(CFLAGS) $(MAIN) -DMPTET_RENDERER=MPTET_USE_FRAMEBUFFER
 
-directfb: src/tet.c
-	$(CC) $(CFLAGS) src/tet.c -DMPTET_RENDERER=MPTET_USE_DIRECTFB -I/usr/include/directfb -ldirectfb
+directfb: $(MAIN)
+	$(CC) $(CFLAGS) $(MAIN) -DMPTET_RENDERER=MPTET_USE_DIRECTFB -I/usr/include/directfb -ldirectfb

@@ -1,11 +1,9 @@
-#include <time.h>
-#include <stdlib.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
-#include <termios.h>
-#include <sched.h>
+#include <time.h>
 #include <gmp.h>
 
 //TODO: Redo main game loop to avoid using cpu too much
@@ -168,13 +166,15 @@ bool collision(const mpz_t op)
         /* Check if the block has extended across a wall-boundary. This
          * does not work for an upwards I-block, and extra checks are required
          * for this edge case */
-     || ((LEADING(op) + OFFSET(type, rot) - 1 -
-          SPACE(type, rot)) % 10 < WIDTH(type, rot) - 1);
+     || (mod(LEADING(op) + OFFSET(type, rot) - 1 -
+          SPACE(type, rot), 10) < WIDTH(type, rot) - 1);
 }
 
 /* Place a block on the field. A call to collision would usually be called
  * prior. */
 #define place_block() mpz_ior(field, field, block);
+
+#define MPTET_ABS(x) ((x) > 0 ? (x) : -(x))
 
 /* Move the currently active block. Check for upwards I-block case also.
  * Returns if the the block was successfully moved. -1 moves right, 1 moves
@@ -485,8 +485,7 @@ int run(void)
 
         // Never use perfect yield
         while (get_nanotime() < fps_delay + __NANO_ADJUST / T_MAXFPS) {
-            sched_yield();
-            usleep(1000);
+            usleep(10000);
         }
 
         fps_delay += __NANO_ADJUST / T_MAXFPS;

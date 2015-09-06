@@ -5,6 +5,7 @@
 static IDirectFB *dfb = NULL;
 static IDirectFBSurface *primary = NULL;
 static IDirectFBInputDevice *keyboard = NULL;
+static IDirectFBFont *font = NULL;
 static int sWidth = 0;
 static int sHeight = 0;
 
@@ -28,11 +29,23 @@ void gui_init(int argc, char **argv)
     dsc.flags = DSDESC_CAPS;
     dsc.caps = DSCAPS_PRIMARY | DSCAPS_FLIPPING;
 
+
+    //DFBCHECK(primary->SetDrawingFlags(primary, DSDRAW_BLEND));
+
+    /* Initialization fonts */
+#ifdef MPTET_USE_FONTS
+    DFBFontDescription font_dsc;
+    font_dsc.flags = DFDESC_HEIGHT;
+    font_dsc.height = 48;
+    DFBCHECK(dfb->CreateFont(dfb, "./ubuntu-mono.ttf", &font_dsc, &font));
+    DFBCHECK(primary->SetFont(primary, font));
+#endif
+
     /* Construct surface */
     DFBCHECK(dfb->CreateSurface(dfb, &dsc, &primary));
     DFBCHECK(primary->GetSize(primary, &sWidth, &sHeight));
     DFBCHECK(primary->FillRectangle(primary, 0, 0, sWidth, sHeight));
-    DFBCHECK(primary->Flip(primary, NULL, 0));
+    DFBCHECK(primary->Flip(primary, NULL, DSFLIP_NONE));
 
     /* Setup keyboard */
     DFBCHECK(dfb->GetInputDevice(dfb, DIDID_KEYBOARD, &keyboard));
@@ -131,11 +144,15 @@ void gui_render(void)
         }
     }
 
-    DFBCHECK(primary->Flip(primary, NULL, 0));
+    // DFBCHECK(primary->DrawString(primary, "Tetris", -1, 10, 10, DSTF_LEFT));
+    DFBCHECK(primary->Flip(primary, NULL, DSFLIP_NONE));
 }
 
 void gui_free(void)
 {
+#ifdef MPTET_USE_FONTS
+    font->Release(font);
+#endif
     keyboard->Release(keyboard);
     primary->Release(primary);
     dfb->Release(dfb);
