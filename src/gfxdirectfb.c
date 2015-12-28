@@ -17,11 +17,6 @@ typedef struct {
     IDirectFBInputDevice *keyboard;
 } mpgfx;
 
-static int keystates__[] = {
-    DIKI_LEFT, DIKI_RIGHT, DIKI_DOWN, DIKI_Z, DIKI_X, DIKI_C,
-    DIKI_SPACE, DIKI_Q
-};
-
 void mpgfx_init(mpgfx *mx, int *argc, char ***argv)
 {
     DFBSurfaceDescription dsc;
@@ -42,14 +37,17 @@ void mpgfx_init(mpgfx *mx, int *argc, char ***argv)
     DC_(mx->dfb->GetInputDevice(mx->dfb, DIDID_KEYBOARD, &mx->keyboard));
 }
 
-#include <unistd.h>
+static int keycodes[] = {
+    DIKI_LEFT, DIKI_RIGHT, DIKI_DOWN, DIKI_Z, DIKI_X, DIKI_C,
+    DIKI_SPACE, DIKI_Q
+};
 
 void mpgfx_update(mpstate *ms, mpgfx *mx)
 {
     DFBInputDeviceKeyState state;
 
-    for (size_t i = 0; i < sizeof(keystates__) / sizeof(keystates__[0]); ++i) {
-        DC_(mx->keyboard->GetKeyState(mx->keyboard, keystates__[i], &state));
+    for (size_t i = 0; i < sizeof(keycodes) / sizeof(keycodes[0]); ++i) {
+        DC_(mx->keyboard->GetKeyState(mx->keyboard, keycodes[i], &state));
 
         if (state == DIKS_DOWN)
             ms->keystate[i]++;

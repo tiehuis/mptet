@@ -497,7 +497,7 @@ void mptet_update(mpstate *ms)
     }
 }
 
-#include "gfxdirectfb.c"
+#include "gfxsdl2.c"
 #define NS_IN_A_SECOND 1000000000ull
 
 #include <unistd.h>
