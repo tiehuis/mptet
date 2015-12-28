@@ -89,10 +89,8 @@ void mpgfx_free(mpgfx *mx)
 /* Hold preview block scale */
 #define H_BLOCK_SCALE 0.9f
 
-#define MPTET_MAX(x, y) ((x) < (y) ? (x) : (y))
-
 /* Hold preview x offset - assert(M_X_OFFSET > (M_BLOCK_SIDE * H_BLOCK_SCALE * 4))*/
-#define H_X_OFFSET (M_X_OFFSET / 2 - MPTET_MAX(0, (M_BLOCK_SIDE * H_BLOCK_SCALE) * 2))
+#define H_X_OFFSET (M_X_OFFSET / 2 -  (M_BLOCK_SIDE * H_BLOCK_SCALE) * 2)
 
 /* Hold preview y offset */
 #define H_Y_OFFSET 40
