@@ -15,7 +15,7 @@ void mpgfx_init(mpgfx *mx, int *argc, char ***argv)
         exit(-1);
     }
 
-    mx->window = SDL_CreateWindow("mptet", 0, 0, 1920, 1080, SDL_WINDOW_FULLSCREEN);
+    mx->window = SDL_CreateWindow("mptet", 0, 0, 0, 0, SDL_WINDOW_FULLSCREEN_DESKTOP);
 
     if (!mx->window) {
         fprintf(stderr, "SDL_CreateWindow Error: %s\n", SDL_GetError());
