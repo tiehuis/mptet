@@ -81,6 +81,9 @@ typedef struct {
     /* Number of lines cleared */
     int lines_cleared;
 
+    /* Time that this state was initialized */
+    uint64_t start_time;
+
 } mpstate;
 
 /**
@@ -532,6 +535,8 @@ int main(int argc, char **argv)
     mptet_set_random_block(&ms);
     mpgfx_render(&ms, &mx);
 
+    ms.start_time = get_nanotime();
+
     while (ms.running) {
         const uint64_t start = get_nanotime();
 
@@ -551,7 +556,9 @@ int main(int argc, char **argv)
     }
 
     printf("%" PRIu64 "\n", ms.total_frames);
-    printf("%lfs\n", ms.total_frames * 16.667f / 1000);
+
+    /* Calculating time from frames provides a much more accurate timing */
+    printf("%lfs\n", (double) (get_nanotime() - ms.start_time) / NS_IN_A_SECOND);
     printf("%d\n", ms.lines_cleared);
 
     mpstate_free(&ms);
