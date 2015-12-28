@@ -78,6 +78,9 @@ typedef struct {
     /* Total frames elapsed for game */
     int64_t total_frames;
 
+    /* Number of lines cleared */
+    int lines_cleared;
+
 } mpstate;
 
 /**
@@ -302,6 +305,7 @@ void mpstate_init(mpstate *ms)
     ms->running = true;
     ms->lock_piece = false;
     ms->can_hold = true;
+    ms->lines_cleared = 0;
     memset(ms->keystate, 0, sizeof(ms->keystate));
     mem256_zero(&ms->field);
     mem256_zero(&ms->ghost);
@@ -428,6 +432,10 @@ int mptet_lineclear(mpstate *ms)
         /* If we cleared a line. the leading value is now reduced but we still
          * need to recheck the current line. */
         leading -= 10;
+
+        /* We cannot clear more than 4 lines at once */
+        if (++cleared >= 4)
+            break;
     }
 
     return cleared;
@@ -474,7 +482,7 @@ void mptet_update(mpstate *ms)
     if (ms->lock_piece) {
         mem256_ior(&ms->field, &ms->block);
         mptet_set_random_block(ms);
-        mptet_lineclear(ms);
+        ms->lines_cleared += mptet_lineclear(ms);
         ms->lock_piece = false;
     }
 
@@ -495,6 +503,10 @@ void mptet_update(mpstate *ms)
     if ((ms->total_frames & 63) == 0) {
         mptet_move(ms, -10);
     }
+
+    /* Check the end condition */
+    if (ms->lines_cleared >= 40)
+        ms->running = false;
 }
 
 #include "gfxsdl2.c"
@@ -539,6 +551,8 @@ int main(int argc, char **argv)
     }
 
     printf("%" PRIu64 "\n", ms.total_frames);
+    printf("%lfs\n", ms.total_frames * 16.667f / 1000);
+    printf("%d\n", ms.lines_cleared);
 
     mpstate_free(&ms);
     mpgfx_free(&mx);
