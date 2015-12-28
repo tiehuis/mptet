@@ -1,15 +1,6 @@
-#include <stdio.h>
-#include <unistd.h>
 #include <directfb.h>
 
-static IDirectFB *dfb = NULL;
-static IDirectFBSurface *primary = NULL;
-static IDirectFBInputDevice *keyboard = NULL;
-static IDirectFBFont *font = NULL;
-static int sWidth = 0;
-static int sHeight = 0;
-
-#define DFBCHECK(...)                                            \
+#define DC_(...)                                                 \
     do {                                                         \
         DFBResult err = __VA_ARGS__;                             \
         if (err != DFB_OK) {                                     \
@@ -18,56 +9,60 @@ static int sHeight = 0;
         }                                                        \
     } while (0)
 
-void gui_init(int argc, char **argv)
-{
-    /* Initialization */
-    DFBSurfaceDescription dsc;
-    DFBCHECK(DirectFBInit(&argc, &argv));
-    DFBCHECK(DirectFBCreate(&dfb));
-    DFBCHECK(dfb->SetCooperativeLevel(dfb, DFSCL_FULLSCREEN));
+typedef struct {
+    int width;
+    int height;
+    IDirectFB *dfb;
+    IDirectFBSurface *primary;
+    IDirectFBInputDevice *keyboard;
+} mpgfx;
 
-    dsc.flags = DSDESC_CAPS;
-    dsc.caps = DSCAPS_PRIMARY | DSCAPS_FLIPPING;
-
-
-    //DFBCHECK(primary->SetDrawingFlags(primary, DSDRAW_BLEND));
-
-    /* Initialization fonts */
-#ifdef MPTET_USE_FONTS
-    DFBFontDescription font_dsc;
-    font_dsc.flags = DFDESC_HEIGHT;
-    font_dsc.height = 48;
-    DFBCHECK(dfb->CreateFont(dfb, "./ubuntu-mono.ttf", &font_dsc, &font));
-    DFBCHECK(primary->SetFont(primary, font));
-#endif
-
-    /* Construct surface */
-    DFBCHECK(dfb->CreateSurface(dfb, &dsc, &primary));
-    DFBCHECK(primary->GetSize(primary, &sWidth, &sHeight));
-    DFBCHECK(primary->FillRectangle(primary, 0, 0, sWidth, sHeight));
-    DFBCHECK(primary->Flip(primary, NULL, DSFLIP_NONE));
-
-    /* Setup keyboard */
-    DFBCHECK(dfb->GetInputDevice(dfb, DIDID_KEYBOARD, &keyboard));
-}
-
-static int keystates__[] =
-{
-    DIKI_LEFT, DIKI_RIGHT, DIKI_DOWN, DIKI_Z, DIKI_X, DIKI_SPACE, DIKI_C, DIKI_Q
+static int keystates__[] = {
+    DIKI_LEFT, DIKI_RIGHT, DIKI_DOWN, DIKI_Z, DIKI_X, DIKI_C,
+    DIKI_SPACE, DIKI_Q
 };
 
-void gui_update(void)
+void mpgfx_init(mpgfx *mx, int *argc, char ***argv)
+{
+    DFBSurfaceDescription dsc;
+    DC_(DirectFBInit(argc, argv));
+    DC_(DirectFBCreate(&mx->dfb));
+    DC_(mx->dfb->SetCooperativeLevel(mx->dfb, DFSCL_EXCLUSIVE));
+
+    dsc.flags = DSDESC_CAPS;
+    dsc.caps  = DSCAPS_PRIMARY | DSCAPS_FLIPPING;
+
+    /* Construct surface */
+    DC_(mx->dfb->CreateSurface(mx->dfb, &dsc, &mx->primary));
+    DC_(mx->primary->GetSize(mx->primary, &mx->width, &mx->height));
+    DC_(mx->primary->FillRectangle(mx->primary, 0, 0, mx->width, mx->height));
+    DC_(mx->primary->Flip(mx->primary, NULL, DSFLIP_NONE));
+
+    /* Setup keyboard */
+    DC_(mx->dfb->GetInputDevice(mx->dfb, DIDID_KEYBOARD, &mx->keyboard));
+}
+
+#include <unistd.h>
+
+void mpgfx_update(mpstate *ms, mpgfx *mx)
 {
     DFBInputDeviceKeyState state;
 
-    for (int i = 0; i < sizeof(keystates__) / sizeof(keystates__[0]); ++i) {
-        DFBCHECK(keyboard->GetKeyState(keyboard, keystates__[i], &state));
+    for (size_t i = 0; i < sizeof(keystates__) / sizeof(keystates__[0]); ++i) {
+        DC_(mx->keyboard->GetKeyState(mx->keyboard, keystates__[i], &state));
 
         if (state == DIKS_DOWN)
-            keyboardState[i]++;
+            ms->keystate[i]++;
         else
-            keyboardState[i] = 0;
+            ms->keystate[i] = 0;
     }
+}
+
+void mpgfx_free(mpgfx *mx)
+{
+    mx->keyboard->Release(mx->keyboard);
+    mx->primary->Release(mx->primary);
+    mx->dfb->Release(mx->dfb);
 }
 
 /* Number of preview pieces shown */
@@ -94,27 +89,29 @@ void gui_update(void)
 /* Hold preview block scale */
 #define H_BLOCK_SCALE 0.9f
 
+#define MPTET_MAX(x, y) ((x) < (y) ? (x) : (y))
+
 /* Hold preview x offset - assert(M_X_OFFSET > (M_BLOCK_SIDE * H_BLOCK_SCALE * 4))*/
 #define H_X_OFFSET (M_X_OFFSET / 2 - MPTET_MAX(0, (M_BLOCK_SIDE * H_BLOCK_SCALE) * 2))
 
 /* Hold preview y offset */
 #define H_Y_OFFSET 40
 
-void gui_render(void)
+void mpgfx_render(mpstate *ms, mpgfx *mx)
 {
     // Clear Screen
-    DFBCHECK(primary->SetColor(primary, 0, 0, 0, 0xff));
-    DFBCHECK(primary->FillRectangle(primary, 0, 0, sWidth, sHeight));
+    DC_(mx->primary->SetColor(mx->primary, 0, 0, 0, 0xff));
+    DC_(mx->primary->FillRectangle(mx->primary, 0, 0, mx->width, mx->height));
 
     // Draw bounding field
-    DFBCHECK(primary->SetColor(primary, 0x80, 0x80, 0x80, 0xff));
-    DFBCHECK(primary->DrawRectangle(primary,
+    DC_(mx->primary->SetColor(mx->primary, 0x80, 0x80, 0x80, 0xff));
+    DC_(mx->primary->DrawRectangle(mx->primary,
                 M_X_OFFSET - 1,
                 M_Y_OFFSET - 1,
                 10 * M_BLOCK_SIDE + 2,
                 22 * M_BLOCK_SIDE + 2));
 
-    DFBCHECK(primary->DrawRectangle(primary,
+    DC_(mx->primary->DrawRectangle(mx->primary,
                 M_X_OFFSET - 2,
                 M_Y_OFFSET - 2,
                 10 * M_BLOCK_SIDE + 4,
@@ -122,29 +119,28 @@ void gui_render(void)
 
     // Draw blocks
     for (int i = 219; i >= 0; --i) {
-        if (mpz_tstbit(field, i) | mpz_tstbit(block, i))
-            DFBCHECK(primary->SetColor(primary, 0x80, 0x80, 0xff, 0xff));
-        else if (mpz_tstbit(ghost, i))
-            DFBCHECK(primary->SetColor(primary, 0x80, 0x80, 0xff / 2, 0));
+        if (mem256_get(&ms->field, i) || mem256_get(&ms->block, i))
+            DC_(mx->primary->SetColor(mx->primary, 0x80, 0x80, 0xff, 0xff));
+        else if (mem256_get(&ms->ghost, i))
+            DC_(mx->primary->SetColor(mx->primary, 0x80, 0x80, 0xff / 2, 0));
         else
-            DFBCHECK(primary->SetColor(primary, 0, 0, 0, 0xff));
+            DC_(mx->primary->SetColor(mx->primary, 0, 0, 0, 0xff));
 
-        DFBCHECK(primary->FillRectangle(primary,
+        DC_(mx->primary->FillRectangle(mx->primary,
                     M_X_OFFSET + M_BLOCK_SIDE * (9 - i % 10) + 1,
                     M_Y_OFFSET + M_BLOCK_SIDE * (21 - (i / 10)) + 1,
                     M_BLOCK_SIDE - 2,
                     M_BLOCK_SIDE - 2));
     }
 
-    // Draw hold piece
-    DFBCHECK(primary->SetColor(primary, 0x80, 0x80, 0xff, 0xff));
-    uint64_t block = PIECE(hold, 0);
+    DC_(mx->primary->SetColor(mx->primary, 0x80, 0x80, 0xff, 0xff));
+    uint64_t block = mptetd_block[ms->hold][0];
 
-    if (hold != -1) {
+    if (ms->hold != -1) {
         for (int x = 0; x < 4; ++x) {
             for (int y = 0; y < 4; ++y) {
                 if (block & ((1 << ((4 - y) * 10 - x - 1))))
-                    DFBCHECK(primary->FillRectangle(primary,
+                    DC_(mx->primary->FillRectangle(mx->primary,
                                 H_X_OFFSET + x * M_BLOCK_SIDE * H_BLOCK_SCALE,
                                 M_Y_OFFSET + H_Y_OFFSET + y * M_BLOCK_SIDE * H_BLOCK_SCALE,
                                 H_BLOCK_SCALE * M_BLOCK_SIDE - 2,
@@ -155,12 +151,12 @@ void gui_render(void)
 
     // Draw preview pieces
     for (int i = 0; i < PREVIEW_NUMBER; ++i) {
-        uint64_t block = PIECE(bag[mod(bag_head + i, 14)], 0);
+        uint64_t block = mptetd_block[ms->bag[ms->bhead + i] % 14][0];
 
         for (int x = 0; x < 4; ++x) {
             for (int y = 0; y < 4; ++y) {
                 if (block & ((1 << ((4 - y) * 10 - x - 1))))
-                    DFBCHECK(primary->FillRectangle(primary,
+                    DC_(mx->primary->FillRectangle(mx->primary,
                                 M_X_OFFSET + 10 * M_BLOCK_SIDE + P_X_OFFSET + x * M_BLOCK_SIDE * P_BLOCK_SCALE,
                                 M_Y_OFFSET + i * (P_Y_OFFSET + 4 * M_BLOCK_SIDE * P_BLOCK_SCALE)
                                 + y * M_BLOCK_SIDE * P_BLOCK_SCALE,
@@ -170,16 +166,5 @@ void gui_render(void)
         }
     }
 
-    // DFBCHECK(primary->DrawString(primary, "Tetris", -1, 10, 10, DSTF_LEFT));
-    DFBCHECK(primary->Flip(primary, NULL, DSFLIP_NONE));
-}
-
-void gui_free(void)
-{
-#ifdef MPTET_USE_FONTS
-    font->Release(font);
-#endif
-    keyboard->Release(keyboard);
-    primary->Release(primary);
-    dfb->Release(dfb);
+    DC_(mx->primary->Flip(mx->primary, NULL, DSFLIP_NONE));
 }

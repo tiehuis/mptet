@@ -1,198 +1,214 @@
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include <gmp.h>
-
-#define MPTET_MIN(x, y) ((x) < (y) ? (x) : (y))
-
-#define MPTET_MAX(x, y) ((x) > (y) ? (x) : (y))
-
-#define MPTET_USE_TERMINAL    0
-#define MPTET_USE_FRAMEBUFFER 1
-#define MPTET_USE_DIRECTFB    2
-
-#ifndef MPTET_RENDERER
-#   define MPTET_RENDERER MPTET_USE_TERMINAL
-#endif
-
-/* Current active block */
-mpz_t block;
-
-/* A set ghost piece would save on computations */
-mpz_t ghost;
-
-/* Current block type */
-uint8_t type;
-
-/* Current block rotation */
-uint8_t rot;
-
-/* Playfield */
-mpz_t field;
-
-/* Current hold piece */
-int8_t hold = -1;
-
-/* Randomizer : holds all next pieces */
-uint8_t bag[14];
-
-/* Current head of bag index */
-uint8_t bag_head;
-
-/* Temporary copy variables */
-mpz_t temp1, temp2, temp3;
-
-bool recalc_ghost;
-
-bool can_hold;
-
-/* Other gameplay data */
-static double current_frames    = 0;
-static int64_t total_frames     = 0;
-static int64_t frame_since_last = 0;
-static int bottom_frame_count   = 0;
-
-/* Tetrimino data
+/**
+ * mptet (Multiple Precision Tetris)
  *
- * The following array stores all information about each rotation of each
- * block.
- *
- * The lower 40 bits stores the rotations of each piece.
- *
- *  I:
- *  0010000000 0000000000
- *  0010000000 1111000000
- *  0010000000 0000000000
- *  0010000000 0000000000
- *
- *  T:
- *  0000000000 0100000000 0000000000 0100000000
- *  1110000000 1100000000 0100000000 0110000000
- *  0100000000 0100000000 1110000000 0100000000
- *  0000000000 0000000000 0000000000 0000000000
- *
- *  L:
- *  0000000000 0100000000 0000000000 0110000000
- *  1110000000 0100000000 1000000000 0100000000
- *  0010000000 1100000000 1110000000 0100000000
- *  0000000000 0000000000 0000000000 0000000000
- *
- *  J:
- *  0000000000 0100000000 0000000000 0110000000
- *  1110000000 0100000000 1000000000 0100000000
- *  0010000000 1100000000 1110000000 0100000000
- *  0000000000 0000000000 0000000000 0000000000
- *
- *  S:
- *  0000000000 1000000000
- *  0110000000 1100000000
- *  1100000000 0100000000
- *  0000000000 0000000000
- *
- *  Z:
- *  0000000000 0010000000
- *  1100000000 0110000000
- *  0110000000 0100000000
- *  0000000000 0000000000
- *
- *  O:
- *  0000000000
- *  0110000000
- *  0110000000
- *  0000000000
- *
- * Bits 40-44 stores the offsets of the piece from the origin of the containing
- * 4x10 box.
- *
- * Bits 45-48 stores the width of the piece, in order to determine if the piece
- * intersects any walls.
- *
- * Bits 49-52 stores the number of empty columns before each piece.
+ * This was originally implemented using GMP, but has since been reduced to
+ * implementing a 256-bit memory region instead, the name however hasn't
+ * changed with this.
  */
 
-/* Correct the modulo operation to give a true modulo and not remainder */
-#define mod(x, y) ((((x) % (y)) + (y)) % (y))
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+#include <inttypes.h>
+#include <time.h>
 
-/* Bit shift an mpz_t. Negative values correspond to right shifts.
- * rop and op1 are of type mpz_t, op2 is a signed integer. */
-#define mpz_bshift(rop, op1, op2)                               \
-    do {                                                        \
-        if (op2 >= 0)                                           \
-            mpz_mul_2exp(rop, op1, (unsigned long) (op2));      \
-        else if (op2 < 0)                                       \
-            mpz_tdiv_q_2exp(rop, op1, (unsigned long) -(op2));  \
-    } while (0)
+#include "mem256.h"
 
-/* Get the current index of the leading bit of x */
-#define LEADING(x) mpz_sizeinbase(x, 2)
-
-/* Extract piece bit data */
-#define PIECE(type, rot)                  \
-    (                                       \
-     ((bdata[type][rot] & 0xf000) << 24) |  \
-     ((bdata[type][rot] & 0x0f00) << 18) |  \
-     ((bdata[type][rot] & 0x00f0) << 12) |  \
-     ((bdata[type][rot] & 0x000f) <<  6)    \
-    )
-
-/* Extract offset to top of a 4x4 grid */
-#define OFFSET(type, rot) (((bdata[type][rot]) >> 16) & 0xf)
-
-/* Extract width of the piece */
-#define WIDTH(type, rot) (((bdata[type][rot]) >> 20) & 0xf)
-
-/* Extract # of leading columns */
-#define SPACE(type, rot) (((bdata[type][rot]) >> 24) & 0xf)
-
-// TODO: Add wallkick data somewhere in here
-static const int64_t bdata[7][4] =
-{
-    { 0x00000000004a0f00, 0x0000000002122222, 0x00000000004a0f00, 0x0000000002122222 },
-    { 0x00000000003a0e40, 0x0000000000214c40, 0x00000000003b04e0, 0x0000000001214640 },
-    { 0x00000000003a0e80, 0x000000000020c440, 0x00000000003c02e0, 0x0000000001214460 },
-    { 0x00000000003a0e20, 0x00000000002144c0, 0x00000000003a08e0, 0x0000000001216440 },
-    { 0x00000000003b06c0, 0x0000000000208c40, 0x00000000003b06c0, 0x0000000000208c40 },
-    { 0x00000000003a0c60, 0x0000000001222640, 0x00000000003a0c60, 0x0000000001222640 },
-    { 0x00000000012b0660, 0x00000000012b0660, 0x00000000012b0660, 0x00000000012b0660 }
+enum {
+    K_Left, K_Right, K_Down, K_z, K_x, K_c, K_Space, K_q
 };
 
-/* Determine if the block given by op is in a collision state on the field.
- * This function clobbers the global 'temp3' variable, so wherever this is
- * called, should not store any data required after the function call in */
-bool collision(const mpz_t op)
-{
-    mpz_ior(temp3, field, op);
+/**
+ * Store an entire gamestate.
+ */
+typedef struct {
 
-    return
-        /* Block should not overlap with field anywhere */
-        mpz_popcount(temp3) != mpz_popcount(op) + mpz_popcount(field)
-        /* Block should not have descended beneath the floor */
-     || mpz_popcount(op) != 4
-        /* Check if the block has extended across a wall-boundary. This
-         * does not work for an upwards I-block, and extra checks are required
-         * for this edge case */
-     || (mod(LEADING(op) + OFFSET(type, rot) - 1 -
-          SPACE(type, rot), 10) < WIDTH(type, rot) - 1);
+    /* Current block top-left x position of bounding square */
+    int bx;
+
+    /* Current block top-left y position of bounding square */
+    int by;
+
+    /* Current block type identifier */
+    int id;
+
+    /* Current block rotation */
+    int br;
+
+    /* Current block that is superimposed over field */
+    mem256_t block;
+
+    /* Current block ghost */
+    mem256_t ghost;
+
+    /* Field state. The field's origin is at the bottom-left boundary */
+    mem256_t field;
+
+    /* How long each key was pressed down for
+     *
+     * 0 - left
+     * 1 - right
+     * 2 - down
+     * 3 - z
+     * 4 - x
+     * 5 - c
+     * 6 - space
+     * 7 - quit
+     * */
+    int keystate[10];
+
+    /* Id of current hold piece */
+    int hold;
+
+    /* Can we currently hold? */
+    bool can_hold;
+
+    /* Randomizer bag for next pieces */
+    int bag[14];
+
+    /* Current bag index */
+    int bhead;
+
+    /* Is the game running? */
+    bool running;
+
+    /* Should the current piece be locked? */
+    bool lock_piece;
+
+    /* Total frames elapsed for game */
+    int64_t total_frames;
+
+} mpstate;
+
+/**
+ * Initial block values for all rotations. Each block is always considered to
+ * be contained in a 4x4 bounding square. Since the field itself is 10 bits
+ * wide, each row has 6 bits of 0 padding to align it to this 10-bit field
+ * boundary. An example of a J-block as it is stored in memory is given:
+ *
+ * 39: .1........
+ * 29: .1........
+ * 19: 11........
+ * 9:  ..........
+ */
+static uint64_t mptetd_block[7][4] = {
+    /* I-block */
+    {0x3c000000, 0x2008020080, 0x3c000000, 0x2008020080},
+    /* T-block */
+    {0x38040000, 0x4030040000, 0x100e0000, 0x4018040000},
+    /* L-block */
+    {0x38080000, 0xc010040000, 0x80e0000, 0x4010060000},
+    /* J-block */
+    {0x38020000, 0x40100c0000, 0x200e0000, 0x6010040000},
+    /* S-block */
+    {0x180c0000, 0x8030040000, 0x180c0000, 0x8030040000},
+    /* Z-block */
+    {0x30060000, 0x2018040000, 0x30060000, 0x2018040000},
+    /* O-block */
+    {0x18060000, 0x18060000, 0x18060000, 0x18060000}
+};
+
+/**
+ * Block metadata. The following information is packed into a 64-bit integer.
+ *
+ * [ height | width | v-offset | h-offset ]
+ *
+ * Each slot uses 4-bits of data, which gives a usable range of [-7, 8]. Each
+ * piece of data uses 1 hex character for its value.
+ *
+ * Height   - The height of the piece from the top of its bounding box.
+ * Width    - The width of the piece from the left of its bouding box.
+ * V-Offset - The number of empty rows above the piece.
+ * H-Offset - The number of empty columns to the left of the piece.
+ */
+static uint64_t mptetd_meta[7][4] = {
+    /* I-block */
+    {0x2410, 0x4302, 0x2410, 0x4302},
+    /* T-block */
+    {0x3310, 0x3200, 0x3310, 0x3301},
+    /* L-block */
+    {0x3310, 0x3200, 0x3310, 0x3301},
+    /* J-block */
+    {0x3310, 0x3200, 0x3310, 0x3301},
+    /* S-block */
+    {0x3310, 0x3200, 0x3310, 0x3200},
+    /* Z-block */
+    {0x3310, 0x3301, 0x3310, 0x3301},
+    /* O-block */
+    {0x3311, 0x3311, 0x3311, 0x3311}
+};
+
+/**
+ * Wallkick data. We only store right rotations. Left rotations are calculated
+ * as the negative of these rotations.
+ */
+static uint64_t mptetd_wallk[2][4] = {
+    { /* Non I-Blocks */
+      0xa9a0190900, /* 0 -> R */
+      0x2120910100, /* R -> 2 */
+      0xa1a0110100, /* 2 -> L */
+      0x2920990900, /* L -> 0 */
+    },
+    { /* I-Block */
+      0x219a010a00, /* 0 -> R */
+      0x9229020900, /* R -> 2 */
+      0xa912090200, /* 2 -> L */
+      0x1aa10a0100, /* L -> 0 */
+    }
+};
+
+/**
+ * Retrieve an integer from some bit-packed data.
+ */
+static inline int mptetd_get(uint64_t data, int offset)
+{
+    const int value = (data >> 4 * offset) & 15;
+    return (value & 8) ? -(value & 7) : (value & 7);
 }
 
-/* Place a block on the field. A call to collision would usually be called
- * prior. */
-#define place_block() mpz_ior(field, field, block);
-
-#define MPTET_ABS(x) ((x) > 0 ? (x) : -(x))
-
-/* Move the currently active block. Check for upwards I-block case also.
- * Returns if the the block was successfully moved. -1 moves right, 1 moves
- * left, all other values are invalid. */
-bool move_horizontal(const int direction)
+/**
+ * Determine if the given block will collide with the field or wall.
+ */
+bool mptet_collision(mpstate *ms, mem256_t *block,
+        const int id, const int br, const int x, const int y)
 {
-    mpz_bshift(temp1, block, direction);
-    if (!collision(temp1) && (type || rot & 2 ? true : LEADING(block) % 10 != (direction < 0 ? 1 : 0))) {
-        mpz_set(block, temp1);
-        recalc_ghost = true;
+    /* Right wall collision */
+    if (x + mptetd_get(mptetd_meta[id][br], 2) > 10)
+        return true;
+
+    /* Left wall collision */
+    if (x + mptetd_get(mptetd_meta[id][br], 0) < 0)
+        return true;
+
+    /* Floor collision */
+    if (y + mptetd_get(mptetd_meta[id][br], 3) < 0)
+        return true;
+
+    /* Field collision */
+    mem256_t tmp = *block;
+    mem256_ior(&tmp, &ms->field);
+
+    /* All tetriminoes are made up of 4 bits */
+    return mem256_popcnt(&tmp) != mem256_popcnt(&ms->field) + 4;
+}
+
+/**
+ * Attempt to move a block, returning if it was successful or not.
+ */
+bool mptet_move(mpstate *ms, int d)
+{
+    mem256_t tmp = ms->block;
+    mem256_bshift(&tmp, d);
+
+    /* Calculate x and y offsets from the given shift */
+    const int x = ms->bx - d % 10;
+    const int y = ms->by + d / 10;
+
+    /* The move had no collision so repeat this with the actual block */
+    if (!mptet_collision(ms, &tmp, ms->id, ms->br, x, y)) {
+        ms->block = tmp;
+        ms->bx = x;
+        ms->by = y;
         return true;
     }
     else {
@@ -200,387 +216,330 @@ bool move_horizontal(const int direction)
     }
 }
 
-bool move_down(void)
+/**
+ * Attempt to rotate a block, returning whether or not this was
+ * successful.
+ */
+bool mptet_rotate(mpstate *ms, int d)
 {
-    mpz_bshift(temp1, block, -10);
-    if (!collision(temp1)) {
-        mpz_set(block, temp1);
-        recalc_ghost = true;
-        return true;
-    }
-    else {
-        return false;
-    }
-}
+    const int br = (ms->br + 4 + d) % 4;
 
-/* Returns if the block cannot be moved any lower. */
-bool at_bottom(const mpz_t block)
-{
-    mpz_bshift(temp1, block, -10);
-    return collision(temp1);
-}
+    mem256_t tmp;
+    mem256_zero(&tmp);
+    tmp.limb[0] = mptetd_block[ms->id][br];
 
-/* 1 indicates right rotation, -1 indicates left rotation. Any other values
- * are considered invalid */
-// TODO: Rotation fails near edges on occassion
-bool move_rotate(int direction)
-{
-    /* This may be negative the new rotation is in bottom 3 rows so cast to an
-     * integer */
-    const int shift = (int) LEADING(block) + OFFSET(type, rot) - 40;
+    /**
+     * Mirrored x axis means we must take the negative.
+     * Blocks are initially spawned in at 0, 3, so an offset of 3 must be
+     * applied to correct for this.
+     */
+    mem256_bshift(&tmp, -ms->bx + 10 * (ms->by - 3));
 
-    const int newrot = mod(rot + direction, 4);
-    mpz_set_ui(temp1, PIECE(type, newrot));
-    mpz_bshift(temp1, temp1, shift);
+    /* Wallkick check */
+    for (int test = 0; test < 5; ++test) {
+        int bx = ms->bx;
+        int by = ms->by;
+        mem256_t wtmp;
+        wtmp = tmp;
 
-    if (!collision(temp1)) {
-        mpz_set(block, temp1);
-        rot = newrot;
-        recalc_ghost = true;
-        return true;
-    }
-    else {
-        return false;
-    }
-}
+        /* Obtain the correct wallkick value for the given block and test */
+        uint64_t *block = ms->id ? mptetd_wallk[0] : mptetd_wallk[1];
+        const uint64_t value = block[d < 0 ? (ms->br + 3) & 3 : ms->br];
 
+        /* Unpack the x, y values */
+        const int tx = mptetd_get(value, 2 * test);
+        const int ty = mptetd_get(value, 2 * test + 1);
 
-// Use a random permutation style algorithm here instead,
-// keep effectively two bags, (one of double size), which allows
-// us to permute a new bag whenever the old is used up. This will allow
-// a 7-piece lookahead which will suffice in most cases
-void shuffle(int start)
-{
-    for (int i = 0; i < 7; ++i) {
-        bag[start + i] = i; // half of the bag with all pieces
-    }
-
-    // Perform a Fisher-Yates shuffle
-    for (int i = 0; i < 7; ++i) {
-        int j = (rand() % (7 - i)) + i;
-        int temp = bag[start + j];
-        bag[start + j] = bag[start + i];
-        bag[start + i] = temp;
-    }
-}
-
-void random_block(void)
-{
-    can_hold = true;
-    recalc_ghost = true;
-    type = bag[bag_head];
-    rot = 0;
-    mpz_set_ui(block, PIECE(type, rot));
-    mpz_bshift(block, block, (type ? 207 : 197));
-
-    // Determine new bag head and if we need to shuffle and if so, what part
-    // of the bag
-    bag_head = bag_head + 1 == 14 ? 0 : bag_head + 1;
-    const int start = bag_head == 7 ? 0 : bag_head == 0 ? 7 : -1;
-
-    if (start != -1)
-        shuffle(start);
-}
-
-void switch_hold_piece(void)
-{
-    if (can_hold) {
-        if (hold != -1) {
-            int tt = hold;
-            hold = type;
-            type = tt;
-            rot = 0;
-            mpz_set_ui(block, PIECE(type, rot));
-            mpz_bshift(block, block, (type ? 207 : 197));
+        /* Set the block values to test */
+        if (d < 0) {
+            mem256_bshift(&wtmp, -tx + 10 * -ty);
+            bx -= -tx;
+            by -= -ty;
         }
         else {
-            hold = type;
-            random_block();
+            mem256_bshift(&wtmp, tx + 10 * ty);
+            bx -= tx;
+            by -= ty;
         }
 
-        recalc_ghost = true;
-        can_hold = false;
+        /* Check if we encountered a collision */
+        if (!mptet_collision(ms, &wtmp, ms->id, br, bx, by)) {
+            ms->block = wtmp;
+            ms->br = br;
+            ms->bx = bx;
+            ms->by = by;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Shuffle a 7 element run in a 14 element bag.
+ *
+ * 'region' should either be one of 0, or 7.
+ */
+void mptet_shuffle(mpstate *ms, int region)
+{
+    /* Insert all pieces in the bag */
+    for (int i = 0; i < 7; ++i)
+        ms->bag[region + i] = i;
+
+    /* Perform a Fisher-Yates shuffle */
+    for (int i = 0; i < 7; ++i) {
+        const int j = (rand() % (7 - i)) + i;
+        const int tmp = ms->bag[region + j];
+        ms->bag[region + j] = ms->bag[region + i];
+        ms->bag[region + i] = tmp;
     }
 }
 
-bool move_harddrop(void)
+void mpstate_init(mpstate *ms)
 {
-    while (move_down()) {}
+    srand(time(NULL));
 
-    place_block();
-    random_block();
+    ms->running = true;
+    ms->lock_piece = false;
+    ms->can_hold = true;
+    memset(ms->keystate, 0, sizeof(ms->keystate));
+    mem256_zero(&ms->field);
+    mem256_zero(&ms->ghost);
 
-    if (!collision(block))
-        return true;
-    else
-        return false;
+    ms->hold = -1;
+
+    ms->total_frames = 0;
+
+    /* Initialize random bag */
+    ms->bhead = 0;
+    mptet_shuffle(ms, 0);
+    mptet_shuffle(ms, 7);
 }
 
-// Check multiple line clears are indeed clearing correctly
-// TODO: Lines are not cleared correctly on occassion
-// This only clears one line at a time
-int clear_lines(void)
+void mpstate_free(mpstate *ms)
+{
+    (void) ms;
+}
+
+void mptet_set_block(mpstate *ms, const int id)
+{
+    /* When generating a new block, we can now hold it if
+     * we could not before */
+    ms->can_hold = true;
+    ms->id = id;
+    ms->br = 0;
+
+    ms->bx = 3;
+    ms->by = 22;
+
+    mem256_zero(&ms->block);
+    ms->block.limb[0] = mptetd_block[ms->id][ms->br];
+    mem256_bshift(&ms->block, 187);
+}
+
+void mptet_set_random_block(mpstate *ms)
+{
+    const int id = ms->bag[ms->bhead];
+
+    /* Update bag head */
+    ms->bhead = (ms->bhead + 1) % 14;
+    if (ms->bhead % 7 == 0)
+        mptet_shuffle(ms, (ms->bhead + 7) % 14);
+
+    /* Set the block */
+    mptet_set_block(ms, id);
+}
+
+/**
+ * Try and hold the current piece.
+ */
+void mptet_hold(mpstate *ms)
+{
+    if (ms->can_hold) {
+        /* If we have a piece to swap */
+        if (ms->hold != -1) {
+            int tmp = ms->hold;
+            ms->hold = ms->id;
+            mptet_set_block(ms, tmp);
+        }
+        else {
+            ms->hold = ms->id;
+            mptet_set_random_block(ms);
+        }
+
+        ms->can_hold = false;
+    }
+}
+
+void mptet_hard_drop(mpstate *ms)
+{
+    while (mptet_move(ms, -10));
+    ms->lock_piece = true;
+}
+
+int mptet_lineclear(mpstate *ms)
 {
     int cleared = 0;
 
-    /* line bits set */
-    mpz_set_ui(temp1, 0x3ff);
+    /* Generate our mask to check lines */
+    mem256_t mask;
+    mask.limb[0] = 0x3ff;
 
-    /* Careful changing this upper bound, as using mpz_setbit will not
-     * do any bounds checking */
-    for (int i = 0; i < LEADING(field) / 10 + 1 - cleared; ++i) {
-        mpz_and(temp2, field, temp1);
+    /* Determine the leading bit on the field so lineclear checks are faster */
+    int leading = mem256_highbit(&ms->field);
+    int y = 0;
 
-        // Found a completely set line */
-        if (mpz_popcount(temp2) == 10) {
-            /* Lower bits set to 1 for flag use */
-            mpz_set_ui(temp2, 0);
-            mpz_setbit(temp2, 10*i + 1);
-            mpz_sub_ui(temp2, temp2, 1);
+    /* Iterate over each line on the field */
+    while (y < leading) {
+        mem256_t tmp = ms->field;
+        mem256_and(&tmp, &mask);
 
-            /* Zero lower 10*i + 10 bits and place the
-             * stored bits in temp2 */
-            mpz_set_ui(temp3, 0);
-            mpz_setbit(temp3, 231);
-            mpz_sub_ui(temp3, temp3, 1);
-            mpz_xor(temp3, temp3, temp2);
-
-            /* Shift field removing cleared line */
-            mpz_and(temp2, field, temp2);   // field bottom
-            mpz_and(temp3, field, temp3);   // field top
-
-            /* Copy parts back to field */
-            mpz_tdiv_q_2exp(field, temp3, 10);
-            mpz_ior(field, field, temp2);
-
-            ++cleared;
-
-            --i; // We just cleared the ith line, so the new current now needs
-                 // to be rechecked
+        /* If the current isn't cleared go to the next line */
+        if (mem256_popcnt(&tmp) != 10) {
+            y += 10;
+            mem256_bshift(&mask, 10);
+            continue;
         }
 
-        mpz_bshift(temp1, temp1, 10);
+        /* We check seperately if we are clearing the bottom row, and if so we
+         * perform a simple shift instead of masking. This is more common than
+         * one would think if playing with a standard well. */
+        if (!y) {
+            mem256_bshift(&ms->field, -10);
+        }
+        else {
+            mem256_t lmask;
+            mem256_fillones(&lmask, 0, y - 1);
+
+            /* Save the region beneath the line that needs to be cleared */
+            mem256_t lower = ms->field;
+            mem256_and(&lower, &lmask);
+
+            /* Shift the field one row and zero the bottom mask. This will
+             * remove one row from the bottom. */
+            mem256_bshift(&ms->field, -10);
+            mem256_negate(&lmask);
+            mem256_and(&ms->field, &lmask);
+
+            /* Place the bottom rows back onto the field */
+            mem256_ior(&ms->field, &lower);
+        }
+
+        /* If we cleared a line. the leading value is now reduced but we still
+         * need to recheck the current line. */
+        leading -= 10;
     }
 
     return cleared;
 }
 
-/*
- *  0 - left
- *  1 - right
- *  2 - down
- *  3 - z
- *  4 - x
- *  5 - space
- *  6 - quit
+#define FPS 60
+#define DAS 8
+
+/**
+ * Deal with keypresses and updating of logic.
  */
-int keyboardState[10] = { 0 };
-
-/* Include appropriate render functions */
-#if MPTET_RENDERER == MPTET_USE_TERMINAL
-#   include "gui/term.c"
-#elif MPTET_RENDERER == MPTET_USE_FRAMEBUFFER
-#   include "gui/framebuffer.c"
-#elif MPTET_RENDERER == MPTET_USE_DIRECTFB
-#   include "gui/directfb.c"
-#else
-#   error "no gui specified"
-#endif
-
-#define DAS_DELAY 4
-
-/*
- *  0 - lf
- *  1 - right
- *  2 - down
- *  3 - z
- *  4 - x
- *  5 - space
- *  6 - quit
- */
-bool update(void)
+void mptet_update(mpstate *ms)
 {
-    if (keyboardState[0] == 1 || keyboardState[0] > DAS_DELAY)
-        move_horizontal(1);
-    else if (keyboardState[1] == 1 || keyboardState[1] > DAS_DELAY)
-        move_horizontal(-1);
+    /* Horizontal movement */
+    if (ms->keystate[K_Left] == 1 || ms->keystate[K_Left] > DAS)
+        mptet_move(ms, 1);
+    else if (ms->keystate[K_Right] == 1 || ms->keystate[K_Right] > DAS)
+        mptet_move(ms, -1);
 
-    if (keyboardState[2] == 1 || keyboardState[2] > DAS_DELAY)
-        move_down();
+    /* Vertical movement */
+    if (ms->keystate[K_Down] || ms->keystate[K_Down] > DAS)
+        mptet_move(ms, -10);
 
-    if (keyboardState[3] == 1)
-        move_rotate(-1);
-    else if (keyboardState[4] == 1)
-        move_rotate(1);
+    /* Rotation */
+    if (ms->keystate[K_z] == 1)
+        mptet_rotate(ms, -1);
+    else if (ms->keystate[K_x] == 1)
+        mptet_rotate(ms, 1);
 
-    if (keyboardState[5] == 1) {
-        if (!move_harddrop())
-            return false;
-        clear_lines();
+    /* Hold piece */
+    if (ms->keystate[K_c] == 1)
+        mptet_hold(ms);
+
+    /* Hard drop */
+    if (ms->keystate[K_Space] == 1)
+        mptet_hard_drop(ms);
+
+    /* Quit toggle */
+    if (ms->keystate[K_q])
+        ms->running = false;
+
+    /* Do we need to lock the current piece? Then add it to field,
+     * spawn a new block and check for line clears */
+    if (ms->lock_piece) {
+        mem256_ior(&ms->field, &ms->block);
+        mptet_set_random_block(ms);
+        mptet_lineclear(ms);
+        ms->lock_piece = false;
     }
 
-    if (keyboardState[6] == 1) {
-        switch_hold_piece();
+    /* Recalc ghost every frame for now */
+    mem256_t tmp = ms->block;
+    const int bx = ms->bx;
+    const int by = ms->by;
+
+    while (mptet_move(ms, -10));
+
+    ms->ghost = ms->block;
+    ms->block = tmp;
+    ms->bx = bx;
+    ms->by = by;
+
+    /* Perform some gravity. Ensure we don't down drop multiple times
+     * per frame even if pressing. */
+    if ((ms->total_frames & 63) == 0) {
+        mptet_move(ms, -10);
     }
-
-    if (keyboardState[7])
-        return false;
-
-    // Add some gravity. Ensure that we don't down drop more than once
-    // if we update multiple times per frame
-    // Perform Gravity
-    static bool status = false;
-    if (total_frames % 60 == 0 && status == false) {
-        if (at_bottom(block)) {
-            if (!move_harddrop())
-                return false;
-            clear_lines();
-        }
-        else {
-            move_down();
-        }
-
-        status = true;
-    }
-    else if (total_frames % 60 == 1) {
-        status = false;
-    }
-
-    // Determine if we need to recalculate ghost and if so, do ti
-    if (recalc_ghost == true) {
-        mpz_set(ghost, block);
-        while (!at_bottom(ghost))
-            mpz_bshift(ghost, ghost, -10);
-        recalc_ghost = false;
-    }
-
-    return true;
 }
 
-#define T_MAXFPS 30
-#define __NANO_ADJUST 1000000000ULL
+#include "gfxdirectfb.c"
+#define NS_IN_A_SECOND 1000000000ull
 
-static int64_t get_nanotime(void)
+#include <unistd.h>
+
+static uint64_t get_nanotime(void)
 {
-    struct timespec ts;
+    static struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    return (int64_t) (ts.tv_sec * __NANO_ADJUST + ts.tv_nsec);
-}
-
-/* Main game loop adapted from NullpoMino */
-// TODO: Doesn't sleep enough, too much CPU usage currently
-int run(void)
-{
-    random_block();
-    gui_render();
-
-    bool sleep_flag, running;
-    double actual_fps;
-    int64_t time_diff, sleep_time, sleep_time_ms, oversleep_time, after_time,
-            maxfps_current, period_current, before_time, prev_time, fps_delay,
-            framecount, calc_interval;
-
-    oversleep_time = 0;
-    maxfps_current = T_MAXFPS;
-    period_current = (int64_t) (1.0 / maxfps_current * __NANO_ADJUST);
-    before_time    = get_nanotime();
-    prev_time      = before_time;
-    framecount     = 0;
-    calc_interval  = 0;
-    actual_fps     = 0.0;
-    fps_delay      = get_nanotime();
-    running        = true;
-
-    while (running) {
-        // Update globals
-        current_frames = actual_fps;
-        total_frames = framecount;
-
-        // Game update
-        // Get new key state here, and move the pieces accordinglyA
-        gui_update();
-
-        if (!update())
-            return 0;
-
-        // Game render
-        // Draw image to terminal here
-        gui_render();
-
-        sleep_flag = false;
-        after_time = get_nanotime();
-        time_diff  = after_time - before_time;
-        sleep_time = (period_current - time_diff) - oversleep_time;
-        sleep_time_ms = sleep_time / 1000000LL;
-
-        // Always use perfect_fps
-        oversleep_time = 0;
-
-        if (maxfps_current > T_MAXFPS + 5)
-            maxfps_current = T_MAXFPS + 5;
-
-        // Never use perfect yield
-        while (get_nanotime() < fps_delay + __NANO_ADJUST / T_MAXFPS) {
-            usleep(10000);
-        }
-
-        fps_delay += __NANO_ADJUST / T_MAXFPS;
-        sleep_flag = true;
-
-        if (!sleep_flag) {
-            oversleep_time = 0;
-            fps_delay = get_nanotime();
-        }
-
-        before_time = get_nanotime();
-
-        // Calculate fps
-        framecount++;
-        calc_interval += period_current;
-
-        if (calc_interval >= __NANO_ADJUST) {
-            const int64_t time_now     = get_nanotime(),
-                          elapsed_time = time_now - prev_time;
-
-            actual_fps    = ((double) framecount / elapsed_time) * __NANO_ADJUST;
-            framecount    = 0;
-            calc_interval = 0;
-            prev_time     = time_now;
-        }
-    }
-
-    return 1;
+    return (uint64_t) ( ts.tv_sec * NS_IN_A_SECOND + ts.tv_nsec);
 }
 
 int main(int argc, char **argv)
 {
-    gui_init(argc, argv);
+    mpstate ms;
+    mpgfx mx;
 
-    // Init game data
-    mpz_init2(block, 230);
-    mpz_init2(field, 230);
-    mpz_init2(temp1, 230);
-    mpz_init2(temp2, 230);
-    mpz_init2(ghost, 230);
+    mpstate_init(&ms);
+    mpgfx_init(&mx, &argc, &argv);
 
-    bag_head = 0;
-    srand(time(NULL));
+    mptet_set_random_block(&ms);
+    mpgfx_render(&ms, &mx);
 
-    // Construct the initial bag by shuffling twice
-    shuffle(0);
-    shuffle(7);
+    while (ms.running) {
+        const uint64_t start = get_nanotime();
 
-    /* Run main program */
-    run();
+        /* Update keyboard */
+        mpgfx_update(&ms, &mx);
 
-    // Clear game data
-    mpz_clear(ghost);
-    mpz_clear(block);
-    mpz_clear(field);
-    mpz_clear(temp1);
-    mpz_clear(temp2);
-    mpz_clear(temp3);
+        /* Update game state by one tick */
+        mptet_update(&ms);
 
-    gui_free();
-    return 0;
+        /* Render the current frame */
+        mpgfx_render(&ms, &mx);
+
+        /* Use nanosleep instead */
+        usleep((start + NS_IN_A_SECOND / FPS - get_nanotime()) / 1000);
+
+        ms.total_frames++;
+    }
+
+    printf("%" PRIu64 "\n", ms.total_frames);
+
+    mpstate_free(&ms);
+    mpgfx_free(&mx);
 }

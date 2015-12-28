@@ -1,23 +1,7 @@
-CC ?= clang
-CFLAGS += -O2 -o mptet
-LDFLAGS += -lgmp
-MAIN := src/mptet.c
+CC 	   ?= gcc
+CFLAGS += -O2 -Wall -Wextra -Wno-format -Wunreachable-code
 
 all: directfb
 
-testing: src/testing
-	$(CC) $(CFLAGS) src/testing.c -DMPTET_RENDERER=MPTET_USE_DIRECTFB -I/usr/include/directfb -ldirectfb $(LDFLAGS)
-
-terminal: $(MAIN)
-	$(CC) $(CFLAGS) $(MAIN) $(LDFLAGS)
-
-fb: $(MAIN)
-	$(CC) $(CFLAGS) $(MAIN) -DMPTET_RENDERER=MPTET_USE_FRAMEBUFFER $(LDFLAGS)
-
-directfb: $(MAIN)
-	$(CC) $(CFLAGS) $(MAIN) -DMPTET_RENDERER=MPTET_USE_DIRECTFB -I/usr/include/directfb -ldirectfb $(LDFLAGS)
-
-clean:
-	rm mptet
-
-.PHONY: clean
+directfb: src/mptet.c src/gfxdirectfb.c
+	gcc $(CFLAGS) src/mptet.c `pkg-config --cflags --libs directfb` -o mptet
