@@ -390,6 +390,7 @@ int mptet_lineclear(mpstate *ms)
 
     /* Generate our mask to check lines */
     mem256_t mask;
+    mem256_zero(&mask);
     mask.limb[0] = 0x3ff;
 
     /* Determine the leading bit on the field so lineclear checks are faster */
@@ -537,6 +538,11 @@ int main(int argc, char **argv)
 
     ms.start_time = get_nanotime();
 
+    /* This loop is quite naive, and assumes that we can always perform a game
+     * tick and update the field within 16ms. This should be no trouble for the
+     * most part but we should take into account cases where this may not
+     * always be the case.
+     */
     while (ms.running) {
         const uint64_t start = get_nanotime();
 
