@@ -1,13 +1,13 @@
 CC 	   ?= gcc
 CFLAGS += -O2 -Wall -Wextra -Wno-format -Wunreachable-code
 
-all: x11
+all: sdl
 
 x11: src/mptet.c src/gfxX11.c
-	gcc $(CFLAGS) src/mptet.c `pkg-config --cflags --libs x11` -o mptet
+	gcc $(CFLAGS) -DUSE_X11 src/mptet.c `pkg-config --cflags --libs x11` -o mptet
 
 directfb: src/mptet.c src/gfxdirectfb.c
-	gcc $(CFLAGS) src/mptet.c `pkg-config --cflags --libs directfb` -o mptet
+	gcc $(CFLAGS) -DUSE_DIRECTFB src/mptet.c `pkg-config --cflags --libs directfb` -o mptet
 
 sdl: src/mptet.c src/gfxsdl2.c
-	gcc $(CFLAGS) src/mptet.c `pkg-config --cflags --libs sdl2` -o mptet
+	gcc $(CFLAGS) -DUSE_SDL2 src/mptet.c `pkg-config --cflags --libs sdl2` -o mptet

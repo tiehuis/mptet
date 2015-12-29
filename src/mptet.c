@@ -513,7 +513,17 @@ void mptet_update(mpstate *ms)
         ms->running = false;
 }
 
-#include "gfxX11.c"
+/* Include the correct graphical functions */
+#if defined(USE_X11)
+#   include "gfxX11.c"
+#elif defined(USE_DIRECTFB)
+#   include "gfxdirectfb.c"
+#elif defined(USE_SDL2)
+#   include "gfxsdl2.c"
+#else
+#   error "No graphical interface specified"
+#endif
+
 #define NS_IN_A_SECOND 1000000000ull
 
 #include <unistd.h>
