@@ -512,7 +512,7 @@ void mptet_update(mpstate *ms)
         ms->running = false;
 }
 
-#include "gfxsdl2.c"
+#include "gfxX11.c"
 #define NS_IN_A_SECOND 1000000000ull
 
 #include <unistd.h>
