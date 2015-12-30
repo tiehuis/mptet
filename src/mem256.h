@@ -244,6 +244,14 @@ bool mem256_get(mem256_t *rop, int index)
     return rop->limb[index >> 6] & (1ull << (index & 63));
 }
 
+/**
+ * Set the bit at index 'index' to 1.
+ */
+void mem256_set(mem256_t *rop, int index)
+{
+    rop->limb[index >> 6] |= (1ull << (index & 63));
+}
+
 /* Return the number of set bits over the entire memory region. */
 int mem256_popcnt(mem256_t *rop)
 {
