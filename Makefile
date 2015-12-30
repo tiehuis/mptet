@@ -1,5 +1,5 @@
 CC 	   ?= clang
-CFLAGS += -O2 -Wall -Wextra -Wno-format -Wunreachable-code
+CFLAGS += -O2 -std=gnu11 -Wall -Wextra -Wno-format -Wunreachable-code
 
 all: sdl2
 
