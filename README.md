@@ -1,6 +1,7 @@
 # mptet
 
 [![Build Status](https://travis-ci.org/Tiehuis/mptet.svg?branch=master)](https://travis-ci.org/Tiehuis/mptet)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)(LICENSE)
 
 mptet (Multiple-Precision Tetris) is a tetris clone originally implemented
 using the GMP bignum library. This dependency has since been removed however
