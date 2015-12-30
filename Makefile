@@ -4,11 +4,13 @@ LIBS   += -lrt
 
 all: sdl2
 
+pkg_config = pkg-config --cflags --libs $(1)
+
 x11: src/mptet.c src/gfxX11.c
-	$(CC) $(CFLAGS) -DUSE_X11 src/mptet.c `pkg-config --cflags --libs x11` -o mptet $(LIBS)
+	$(CC) $(CFLAGS) -DUSE_X11 src/mptet.c `$(call pkg_config,x11)` -o mptet $(LIBS)
 
 directfb: src/mptet.c src/gfxdirectfb.c
-	$(CC) $(CFLAGS) -DUSE_DIRECTFB src/mptet.c `pkg-config --cflags --libs directfb` -o mptet $(LIBS)
+	$(CC) $(CFLAGS) -DUSE_DIRECTFB src/mptet.c `$(call pkg_config,directfb)` -o mptet $(LIBS)
 
 sdl2: src/mptet.c src/gfxsdl2.c
-	$(CC) $(CFLAGS) -DUSE_SDL2 src/mptet.c `pkg-config --cflags --libs sdl2` -o mptet $(LIBS)
+	$(CC) $(CFLAGS) -DUSE_SDL2 src/mptet.c `$(call pkg_config,sdl2)` -o mptet $(LIBS)
