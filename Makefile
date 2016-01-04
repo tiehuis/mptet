@@ -1,5 +1,6 @@
 CC 	   ?= clang
-CFLAGS += -O2 -std=gnu1x -Wall -Wextra -Wno-format -Wunreachable-code
+CFLAGS += -O2 -std=gnu1x -Wall -Wextra -Wno-format -Wunreachable-code \
+		  -Wwrite-strings -Wcast-align #-Wswitch-default -Wshadow -Wconversion
 LIBS   += -lrt
 
 all: sdl2
@@ -18,7 +19,8 @@ sdl2: src/mptet.c src/gfxsdl2.c
 .PHONY: clean test
 
 test: src/mptet.c test/main.c
-	$(CC) $(CFLAGS) -g -DTEST src/mptet.c -o testmp $(LIBS)
+	$(CC) $(CFLAGS) -g -fstack-check -fno-omit-frame-pointer -fsanitize=undefined \
+		-DTEST src/mptet.c -o testmp $(LIBS)
 
 clean:
 	rm -f mptet testmp

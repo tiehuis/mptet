@@ -11,7 +11,7 @@ enum {
     I_, T_, L_, J_, S_, Z_, O_
 };
 
-void set_layout(mpstate *ms, int id, int br, char *layout)
+void set_layout(mpstate *ms, int id, int br, const char *layout)
 {
     mem256_zero(&ms->field);
     mem256_zero(&ms->block);
@@ -41,7 +41,7 @@ void set_layout(mpstate *ms, int id, int br, char *layout)
     }
 }
 
-void print_layout(char *layout, size_t len)
+void print_layout(const char *layout, size_t len)
 {
     for (size_t i = 0; i <= len; ++i) {
         fprintf(stderr, "%c", layout[i]);
@@ -65,7 +65,7 @@ void print_limb(mpstate *ms, int upper)
     }
 }
 
-bool assert_layout(mpstate *ms, char *layout)
+bool assert_layout(mpstate *ms, const char *layout)
 {
     int failure = 0;
 
