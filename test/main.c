@@ -5,6 +5,7 @@
 #include <string.h>
 
 mpstate ms;
+int errors = 0;
 
 enum {
     I_, T_, L_, J_, S_, Z_, O_
@@ -110,6 +111,7 @@ bool assert_layout(mpstate *ms, char *layout)
         print_limb(ms, (llen + 10 - (llen % 10)));
         fprintf(stderr, "Expected:\n");
         print_layout(layout, llen);
+        errors++;
         return false;
     }
 
@@ -186,4 +188,6 @@ int main(void)
     test3();
 
     mpstate_free(&ms);
+
+    return errors;
 }
