@@ -15,7 +15,10 @@ directfb: src/mptet.c src/gfxdirectfb.c
 sdl2: src/mptet.c src/gfxsdl2.c
 	$(CC) $(CFLAGS) -DUSE_SDL2 src/mptet.c `$(call pkg_config,sdl2)` -o mptet $(LIBS)
 
-.PHONY: clean
+.PHONY: clean test
+
+test: src/mptet.c test/main.c
+	$(CC) $(CFLAGS) -g -DTEST src/mptet.c -o testmp $(LIBS)
 
 clean:
-	rm -f mptet
+	rm -f mptet testmp

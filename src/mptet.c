@@ -417,6 +417,7 @@ int mptet_lineclear(mpstate *ms)
         }
         else {
             mem256_t lmask;
+            mem256_zero(&lmask);
             mem256_fillones(&lmask, 0, y - 1);
 
             /* Save the region beneath the line that needs to be cleared */
@@ -513,6 +514,8 @@ void mptet_update(mpstate *ms)
         ms->running = false;
 }
 
+#ifndef TEST
+
 /* Include the correct graphical functions */
 #if defined(USE_X11)
 #   include "gfxX11.c"
@@ -580,3 +583,7 @@ int main(int argc, char **argv)
     mpstate_free(&ms);
     mpgfx_free(&mx);
 }
+
+#else
+#include "../test/main.c"
+#endif

@@ -278,10 +278,10 @@ int mem256_highbit(mem256_t *rop)
 void mem256_fillones(mem256_t *rop, int start, int end)
 {
     int amount = end - start;
-
     int i = 0;
+
     while (amount > 0) {
-        rop->limb[i++] = (amount & 63) == 63 ? ~0 : (1 << (amount & 63)) - 1;
+        rop->limb[i++] = amount > 64 ? ~(0ull) : (1ull << (amount & 63)) - 1;
         amount -= 64;
     }
 

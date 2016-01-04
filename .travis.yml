@@ -12,6 +12,10 @@ before_install:
     - sudo apt-get install -qq libsdl2-dev libdirectfb-dev libx11-dev
 
 script:
+    # Test compilation success
     - make sdl2
     - make directfb
     - make x11
+    # Validate engine test cases
+    - make test
+    - ./testmp
