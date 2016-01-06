@@ -514,8 +514,6 @@ void mptet_update(mpstate *ms)
         ms->running = false;
 }
 
-#ifndef TEST
-
 /* Include the correct graphical functions */
 #if defined(USE_X11)
 #   include "gfxX11.c"
@@ -523,20 +521,15 @@ void mptet_update(mpstate *ms)
 #   include "gfxdirectfb.c"
 #elif defined(USE_SDL2)
 #   include "gfxsdl2.c"
+#elif defined(TEST)
+    /* Do not include a graphical interface */
 #else
 #   error "No graphical interface specified"
 #endif
 
-#define NS_IN_A_SECOND 1000000000ull
+#ifndef TEST
 
-#include <unistd.h>
-
-static uint64_t get_nanotime(void)
-{
-    static struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return (uint64_t) ( ts.tv_sec * NS_IN_A_SECOND + ts.tv_nsec);
-}
+#include "ts.h"
 
 int main(int argc, char **argv)
 {
@@ -549,7 +542,7 @@ int main(int argc, char **argv)
     mptet_set_random_block(&ms);
     mpgfx_render(&ms, &mx);
 
-    ms.start_time = get_nanotime();
+    ms.start_time = ts_get_current_time();
 
     /* This loop is quite naive, and assumes that we can always perform a game
      * tick and update the field within 16ms. This should be no trouble for the
@@ -557,7 +550,7 @@ int main(int argc, char **argv)
      * always be the case.
      */
     while (ms.running) {
-        const uint64_t start = get_nanotime();
+        const uint64_t start = ts_get_current_time();
 
         /* Update keyboard */
         mpgfx_update(&ms, &mx);
@@ -569,7 +562,7 @@ int main(int argc, char **argv)
         mpgfx_render(&ms, &mx);
 
         /* Use nanosleep instead */
-        usleep((start + NS_IN_A_SECOND / FPS - get_nanotime()) / 1000);
+        ts_sleep(start + TS_IN_A_SECOND / FPS - ts_get_current_time());
 
         ms.total_frames++;
     }
@@ -577,7 +570,7 @@ int main(int argc, char **argv)
     printf("%" PRIu64 "\n", ms.total_frames);
 
     /* Calculating time from frames provides a much more accurate timing */
-    printf("%lfs\n", (double) (get_nanotime() - ms.start_time) / NS_IN_A_SECOND);
+    printf("%lfs\n", (double) (ts_get_current_time() - ms.start_time) / TS_IN_A_SECOND);
     printf("%d\n", ms.lines_cleared);
 
     mpstate_free(&ms);
