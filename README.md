@@ -1,6 +1,6 @@
 # mptet
 
-[![Build Status](https://travis-ci.org/Tiehuis/mptet.svg?branch=master)](https://travis-ci.org/Tiehuis/mptet)
+[![Build Status](https://travis-ci.org/tiehuis/mptet.svg?branch=master)](https://travis-ci.org/tiehuis/mptet)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 mptet (Multiple-Precision Tetris) is a tetris clone originally implemented
