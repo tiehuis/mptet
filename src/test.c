@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "mem256.h"
+#include "mptet.h"
+
 mpstate ms;
 int errors = 0;
 

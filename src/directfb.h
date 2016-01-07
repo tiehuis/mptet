@@ -9,7 +9,7 @@
         }                                                        \
     } while (0)
 
-typedef struct {
+typedef struct mpgfx__ {
     int width;
     int height;
     IDirectFB *dfb;

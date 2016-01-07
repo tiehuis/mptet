@@ -17,5 +17,5 @@ script:
     - make directfb
     - make x11
     # Validate engine test cases
-    - make test
-    - ./testmp
+    #- make test
+    #- ./testmp

@@ -1,7 +1,7 @@
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 
-typedef struct {
+typedef struct mpgfx__ {
     Display *display;
     Window window;
     GC gc;

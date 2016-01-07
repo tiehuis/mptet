@@ -24,6 +24,10 @@
 
 #include <unistd.h>
 
+#if defined(MP_GFX_SDL2)
+#   include <SDL.h>
+#endif
+
 /* Set appropriate defines for what functions we use */
 #if _POSIX_C_SOURCE >= 199309L
 #   define TS_HAVE_NANOSLEEP
@@ -71,7 +75,7 @@
 /**
  * Return a number of ts as a uint64_t
  */
-int64_t ts_get_current_time(void)
+uint64_t ts_get_current_time(void)
 {
 #if defined(TS_HAVE_CLOCK_GETTIME)
     struct timespec ts;
@@ -86,11 +90,12 @@ int64_t ts_get_current_time(void)
 
 void ts_sleep(uint64_t no_of_ts)
 {
-#if defined(TS_HAVE_NANOSLEEP)
     no_of_ts = no_of_ts / TS_SCALE_FACTOR;
+
+#if defined(TS_HAVE_NANOSLEEP)
     struct timespec ts = { no_of_ts / TS_IN_A_SECOND, no_of_ts % TS_IN_A_SECOND };
     nanosleep(&ts, NULL);
 #else
-    usleep(no_of_ts / TS_SCALE_FACTOR);
+    usleep(no_of_ts);
 #endif
 }
